@@ -11,7 +11,8 @@ const path = require('path');
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 
-const ADMIN_PASSWORD   = process.env.ADMIN_PASSWORD   || 'prof2024';
+const ADMIN_PASSWORD   = process.env.ADMIN_PASSWORD;
+if (!ADMIN_PASSWORD) { console.error('FATAL: ADMIN_PASSWORD env var is required'); process.exit(1); }
 const GOOGLE_FORMS_URL = process.env.GOOGLE_FORMS_URL || 'https://forms.gle/REMPLACER_CE_LIEN';
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
