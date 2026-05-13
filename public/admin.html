@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin — L'Évasion Mathématique</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #080c14; --surface: #0d1526; --border: #1e3a5f;
+      --cyan: #00e5ff; --magenta: #e040fb; --gold: #ffd740;
+      --green: #00e676; --red: #ff1744; --text: #e0f0ff; --text-dim: #607d8b;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; min-height: 100vh; }
+
+    /* ── Login ── */
+    #login-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; gap: 24px; }
+    #login-screen h1 { font-family: 'Orbitron', sans-serif; font-size: 2rem; color: var(--cyan); text-shadow: 0 0 20px var(--cyan); }
+    #login-screen p { color: var(--text-dim); }
+    .login-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 40px; width: 360px; display: flex; flex-direction: column; gap: 16px; }
+    .login-box input { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 12px 16px; border-radius: 8px; font-size: 1rem; outline: none; transition: border-color .2s; }
+    .login-box input:focus { border-color: var(--cyan); }
+    #login-error { color: var(--red); font-size: .9rem; text-align: center; display: none; }
+
+    /* ── Dashboard ── */
+    #dashboard { display: none; max-width: 1100px; margin: 0 auto; padding: 24px 24px 48px; }
+    .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 32px; flex-wrap: wrap; gap: 12px; }
+    .top-bar h1 { font-family: 'Orbitron', sans-serif; font-size: 1.4rem; color: var(--cyan); }
+    .status-pill { padding: 6px 14px; border-radius: 100px; font-size: .85rem; font-weight: 600; }
+    .status-pill.waiting { background: rgba(0,229,255,.15); color: var(--cyan); border: 1px solid var(--cyan); }
+    .status-pill.active  { background: rgba(0,230,118,.15); color: var(--green); border: 1px solid var(--green); animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.6; } }
+
+    .grid { display: grid; grid-template-columns: 340px 1fr; gap: 20px; }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; }
+    .card h2 { font-family: 'Orbitron', sans-serif; font-size: .9rem; color: var(--text-dim); margin-bottom: 20px; text-transform: uppercase; letter-spacing: .1em; }
+
+    /* Timer */
+    .timer-display { text-align: center; margin: 12px 0 24px; }
+    .timer-display .time { font-family: 'Orbitron', sans-serif; font-size: 3.5rem; font-weight: 900; color: var(--gold); text-shadow: 0 0 20px var(--gold); }
+    .timer-display .label { color: var(--text-dim); font-size: .85rem; margin-top: 4px; }
+
+    /* Duration */
+    .duration-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
+    .dur-btn { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 10px; border-radius: 8px; cursor: pointer; text-align: center; font-size: .95rem; font-weight: 600; transition: all .2s; }
+    .dur-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+    .dur-btn.active { background: rgba(0,229,255,.15); border-color: var(--cyan); color: var(--cyan); }
+
+    /* Buttons */
+    .action-row { display: flex; gap: 10px; flex-direction: column; }
+    .btn-lg { padding: 14px; border-radius: 10px; border: none; font-size: 1rem; font-weight: 700; cursor: pointer; transition: all .2s; }
+    .btn-start { background: var(--green); color: #000; }
+    .btn-start:hover { background: #69f0ae; }
+    .btn-start:disabled { background: #1b5e20; color: #4caf50; cursor: not-allowed; }
+    .btn-stop2 { background: var(--red); color: #fff; }
+    .btn-stop2:hover { background: #ff5252; }
+    .btn-stop2:disabled { background: #3e0000; color: #e57373; cursor: not-allowed; }
+
+    /* AI Toggle */
+    .ai-row { display: flex; align-items: center; gap: 12px; padding: 14px 0 6px; border-top: 1px solid var(--border); margin-top: 12px; }
+    .ai-label { font-size: .9rem; font-weight: 600; flex: 1; }
+    .toggle { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; cursor: pointer; inset: 0; background: #2a3a4a; border-radius: 24px; transition: .3s; }
+    .toggle-slider::before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .3s; }
+    input:checked + .toggle-slider { background: var(--green); }
+    input:checked + .toggle-slider::before { transform: translateX(20px); }
+    #ai-status { font-size: .82rem; color: var(--text-dim); width: 60px; }
+
+    /* Players */
+    .player-count { font-family: 'Orbitron', sans-serif; font-size: 2rem; font-weight: 900; color: var(--magenta); text-align: center; margin-bottom: 4px; }
+    .player-label { text-align: center; color: var(--text-dim); font-size: .85rem; margin-bottom: 16px; }
+    #player-list { display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; }
+    .player-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--bg); border-radius: 10px; border-left: 3px solid #333; }
+    .player-row .pname { flex: 1; font-weight: 600; font-size: .95rem; }
+    .player-row .pscore { font-family: 'Orbitron', sans-serif; color: var(--gold); font-size: .9rem; }
+    .pbadge { font-size: .75rem; padding: 2px 8px; border-radius: 100px; }
+    .pbadge.escaped { background: rgba(0,230,118,.2); color: var(--green); }
+    .pbadge.wrong { background: rgba(255,23,68,.15); color: var(--red); }
+
+    /* Boss table */
+    .boss-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    .boss-table th { text-align: left; padding: 8px 12px; color: var(--text-dim); font-weight: 600; font-size: .8rem; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+    .boss-table td { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.04); }
+    .boss-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; vertical-align: middle; }
+
+    /* ── Results section ── */
+    #results-section { display: none; margin-top: 32px; }
+    #results-section > h2 { font-family: 'Orbitron', sans-serif; font-size: 1.1rem; color: var(--cyan); margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border); letter-spacing: .06em; }
+
+    .results-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+    .btn-action { padding: 10px 20px; border-radius: 10px; border: none; font-size: .95rem; font-weight: 700; cursor: pointer; transition: all .2s; font-family: 'Inter', sans-serif; }
+    .btn-dl-json { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .btn-dl-json:hover { border-color: var(--cyan); }
+    .btn-dl-json:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-gen-reports { background: var(--magenta); color: #fff; }
+    .btn-gen-reports:hover { background: #f06aff; }
+    .btn-gen-reports:disabled { opacity: .45; cursor: not-allowed; }
+
+    .stats-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    .stats-table th { text-align: left; padding: 10px 14px; color: var(--text-dim); font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .07em; border-bottom: 1px solid var(--border); }
+    .stats-table td { padding: 11px 14px; border-bottom: 1px solid rgba(255,255,255,.04); vertical-align: middle; }
+    .stats-table tr:hover td { background: rgba(255,255,255,.025); }
+    .stats-table tr:last-child td { border-bottom: none; }
+    .s-correct { color: var(--green); font-weight: 700; }
+    .s-wrong { color: var(--red); font-weight: 700; }
+    .s-escaped { color: var(--gold); }
+    .char-badge { display: inline-flex; align-items: center; gap: 6px; font-size: .88rem; }
+
+    /* Reports */
+    #reports-wrapper { display: none; margin-top: 32px; }
+    #reports-wrapper h3 { font-family: 'Orbitron', sans-serif; font-size: .9rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 16px; }
+    #progress-bar-container { background: rgba(255,255,255,.07); border-radius: 100px; height: 8px; margin-bottom: 20px; overflow: hidden; }
+    #progress-bar { background: var(--magenta); height: 8px; border-radius: 100px; width: 0%; transition: width .4s ease; }
+    #progress-label { text-align: center; color: var(--text-dim); font-size: .85rem; margin-bottom: 16px; }
+    .report-card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; margin-bottom: 14px; }
+    .report-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
+    .report-card-name { font-weight: 700; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+    .report-card-meta { font-size: .8rem; color: var(--text-dim); display: flex; gap: 16px; flex-wrap: wrap; }
+    .report-card-meta span { display: flex; align-items: center; gap: 4px; }
+    .report-body { color: #b0c8e0; line-height: 1.75; font-size: .92rem; white-space: pre-wrap; }
+    .btn-dl-report { background: rgba(0,229,255,.1); color: var(--cyan); border: 1px solid rgba(0,229,255,.25); padding: 7px 14px; border-radius: 8px; font-size: .82rem; font-weight: 600; cursor: pointer; transition: all .2s; white-space: nowrap; }
+    .btn-dl-report:hover { background: rgba(0,229,255,.2); }
+    #btn-dl-all { display: none; background: var(--cyan); color: #000; border: none; padding: 10px 22px; border-radius: 10px; font-size: .95rem; font-weight: 700; cursor: pointer; transition: all .2s; margin-bottom: 16px; }
+    #btn-dl-all:hover { background: #33eeff; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<!-- ── Login ── -->
+<div id="login-screen">
+  <h1>⚡ Panel Professeur</h1>
+  <p>L'Évasion Mathématique</p>
+  <div class="login-box">
+    <input type="password" id="pwd-input" placeholder="Mot de passe..." autocomplete="off">
+    <button style="background:var(--cyan);color:#000;border:none;padding:12px;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;" id="login-btn">Connexion</button>
+    <span id="login-error">Mot de passe incorrect.</span>
+  </div>
+</div>
+
+<!-- ── Dashboard ── -->
+<div id="dashboard">
+  <div class="top-bar">
+    <h1>⚡ Panel Professeur</h1>
+    <span id="status-pill" class="status-pill waiting">En attente</span>
+  </div>
+
+  <div class="grid">
+    <!-- Controls -->
+    <div style="display:flex;flex-direction:column;gap:20px;">
+      <div class="card">
+        <h2>⏱ Chronomètre</h2>
+        <div class="timer-display">
+          <div class="time" id="timer-display">10:00</div>
+          <div class="label">Temps restant</div>
+        </div>
+        <h2 style="margin-bottom:12px;">Durée de la partie</h2>
+        <div class="duration-grid">
+          <button class="dur-btn" data-s="300">5 min</button>
+          <button class="dur-btn active" data-s="600">10 min</button>
+          <button class="dur-btn" data-s="900">15 min</button>
+          <button class="dur-btn" data-s="1200">20 min</button>
+        </div>
+        <div class="action-row">
+          <button class="btn-lg btn-start" id="start-btn">🚀 Lancer la partie</button>
+          <button class="btn-lg btn-stop2" id="stop-btn" disabled>⛔ Arrêter la partie</button>
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">🤖 Feedback IA</span>
+          <label class="toggle">
+            <input type="checkbox" id="ai-toggle">
+            <span class="toggle-slider"></span>
+          </label>
+          <span id="ai-status">Désactivé</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>📚 Boss & Questions</h2>
+        <table class="boss-table">
+          <thead><tr><th>#</th><th>Boss</th><th>Thème</th></tr></thead>
+          <tbody id="boss-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Players -->
+    <div class="card">
+      <h2>👥 Joueurs connectés</h2>
+      <div class="player-count" id="player-count">0</div>
+      <div class="player-label">joueurs en salle</div>
+      <div id="player-list">
+        <div style="color:var(--text-dim);text-align:center;padding:20px;">En attente de connexions…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Results section (appears after game end) ── -->
+  <div id="results-section">
+    <h2>📊 Résultats de la partie</h2>
+
+    <div class="results-actions">
+      <button class="btn-action btn-dl-json" id="btn-dl-json" disabled>⬇ Télécharger données JSON</button>
+      <button class="btn-action btn-gen-reports" id="btn-gen-reports">🤖 Générer rapports IA</button>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden;">
+      <table class="stats-table">
+        <thead>
+          <tr>
+            <th>Joueur</th>
+            <th>Personnage</th>
+            <th>✓ Corrects</th>
+            <th>✗ Erreurs</th>
+            <th>Pièces</th>
+            <th>Résultat</th>
+          </tr>
+        </thead>
+        <tbody id="results-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- Reports -->
+    <div id="reports-wrapper">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:12px;">
+        <h3>📝 Rapports individuels</h3>
+        <button id="btn-dl-all">⬇ Tout télécharger</button>
+      </div>
+      <div id="progress-bar-container"><div id="progress-bar"></div></div>
+      <div id="progress-label"></div>
+      <div id="reports-list"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const socket = io();
+  let selectedDuration = 600;
+  let isGameActive = false;
+  let lastJsonData = null;
+  const allReports = [];
+
+  // ── Login ──────────────────────────────────────────────────────────────────
+  document.getElementById('login-btn').onclick = tryLogin;
+  document.getElementById('pwd-input').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
+
+  function tryLogin() {
+    socket.emit('adminAuth', document.getElementById('pwd-input').value);
+  }
+
+  socket.on('adminAuthResult', ({ success }) => {
+    if (success) {
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('dashboard').style.display   = 'block';
+    } else {
+      document.getElementById('login-error').style.display = 'block';
+    }
+  });
+
+  // ── Boss table ─────────────────────────────────────────────────────────────
+  socket.on('bossInfo', (bosses) => {
+    document.getElementById('boss-table-body').innerHTML = bosses.map(b => `
+      <tr>
+        <td><span class="boss-dot" style="background:${b.cssColor}"></span>${b.id + 1}</td>
+        <td>${b.name}</td>
+        <td style="color:var(--text-dim)">${b.subtitle}</td>
+      </tr>
+    `).join('');
+  });
+
+  // ── Duration selector ──────────────────────────────────────────────────────
+  document.querySelectorAll('.dur-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (isGameActive) return;
+      selectedDuration = parseInt(btn.dataset.s);
+      document.querySelectorAll('.dur-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      socket.emit('adminSetDuration', selectedDuration);
+    });
+  });
+
+  // ── Game controls ──────────────────────────────────────────────────────────
+  document.getElementById('start-btn').onclick = () => socket.emit('adminStartGame');
+  document.getElementById('stop-btn').onclick  = () => {
+    if (confirm('Arrêter la partie en cours ?')) socket.emit('adminStopGame');
+  };
+
+  // ── AI toggle ──────────────────────────────────────────────────────────────
+  document.getElementById('ai-toggle').addEventListener('change', (e) => {
+    socket.emit('adminToggleAI', e.target.checked);
+  });
+
+  // ── Admin state ────────────────────────────────────────────────────────────
+  socket.on('adminState', (state) => {
+    isGameActive = state.gameActive;
+
+    const d    = state.gameActive ? state.timerLeft : state.gameDuration;
+    const mins = Math.floor(d / 60), secs = d % 60;
+    const timerEl = document.getElementById('timer-display');
+    timerEl.textContent  = `${mins}:${String(secs).padStart(2,'0')}`;
+    timerEl.style.color  = state.gameActive && state.timerLeft <= 30 ? 'var(--red)' : '';
+
+    const pill = document.getElementById('status-pill');
+    pill.textContent = state.gameActive ? '● En cours' : '● En attente';
+    pill.className   = 'status-pill ' + (state.gameActive ? 'active' : 'waiting');
+
+    document.getElementById('start-btn').disabled = state.gameActive;
+    document.getElementById('stop-btn').disabled  = !state.gameActive;
+    document.querySelectorAll('.dur-btn').forEach(b => {
+      b.disabled     = state.gameActive;
+      b.style.opacity = state.gameActive ? '0.4' : '1';
+    });
+
+    document.getElementById('player-count').textContent = state.playerCount;
+
+    // AI toggle state
+    document.getElementById('ai-toggle').checked = state.aiFeedbackEnabled;
+    const aiStatusEl = document.getElementById('ai-status');
+    aiStatusEl.textContent = state.aiFeedbackEnabled ? 'Activé' : 'Désactivé';
+    aiStatusEl.style.color = state.aiFeedbackEnabled ? 'var(--green)' : 'var(--text-dim)';
+
+    const list = document.getElementById('player-list');
+    if (!state.players.length) {
+      list.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">En attente de connexions…</div>';
+      return;
+    }
+    const sorted = [...state.players].sort((a, b) => b.score - a.score);
+    list.innerHTML = sorted.map((p, i) => `
+      <div class="player-row" style="border-left-color:${['#ffd740','#b0bec5','#cd7f32'][i] || '#333'}">
+        <span style="font-family:'Orbitron',sans-serif;color:var(--text-dim);font-size:.8rem;width:20px">${i+1}</span>
+        <span class="pname">${p.name}${p.escaped ? ' 🏁' : ''}</span>
+        <span class="pscore">${p.score} pts</span>
+        ${p.wrongAnswers > 0 ? `<span class="pbadge wrong">${p.wrongAnswers} ✗</span>` : ''}
+        ${p.escaped ? `<span class="pbadge escaped">Évadé</span>` : ''}
+      </div>
+    `).join('');
+  });
+
+  // ── End-of-game stats ──────────────────────────────────────────────────────
+  socket.on('teacherStats', (stats) => {
+    document.getElementById('results-section').style.display = 'block';
+    document.getElementById('results-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    document.getElementById('results-tbody').innerHTML = stats.map(p => `
+      <tr>
+        <td style="font-weight:600">${p.name}</td>
+        <td><span class="char-badge">${p.characterEmoji || ''} ${p.characterName || '—'}</span></td>
+        <td class="s-correct">${p.correctAnswers}</td>
+        <td class="s-wrong">${p.wrongAnswers}</td>
+        <td>${p.coins}</td>
+        <td class="${p.escaped ? 's-escaped' : ''}">${p.escaped ? '✓ Évadé(e)' : '—'}</td>
+      </tr>
+    `).join('');
+  });
+
+  // ── JSON download ──────────────────────────────────────────────────────────
+  socket.on('downloadData', (data) => {
+    lastJsonData = data;
+    document.getElementById('btn-dl-json').disabled = false;
+  });
+
+  document.getElementById('btn-dl-json').onclick = () => {
+    if (!lastJsonData) return;
+    const d  = new Date();
+    const ts = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}_${String(d.getHours()).padStart(2,'0')}h${String(d.getMinutes()).padStart(2,'0')}`;
+    triggerDownload(`stats_${ts}.json`, JSON.stringify(lastJsonData, null, 2), 'application/json');
+  };
+
+  // ── Report generation ──────────────────────────────────────────────────────
+  document.getElementById('btn-gen-reports').onclick = () => {
+    allReports.length = 0;
+    document.getElementById('reports-list').innerHTML = '';
+    document.getElementById('btn-dl-all').style.display = 'none';
+    document.getElementById('progress-label').textContent = 'Démarrage de la génération…';
+    document.getElementById('progress-bar').style.width   = '0%';
+    document.getElementById('reports-wrapper').style.display = 'block';
+    document.getElementById('reports-wrapper').scrollIntoView({ behavior: 'smooth' });
+    document.getElementById('btn-gen-reports').disabled = true;
+    socket.emit('adminGenerateReports');
+  };
+
+  socket.on('reportProgress', ({ total, done }) => {
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    document.getElementById('progress-bar').style.width   = pct + '%';
+    document.getElementById('progress-label').textContent = `${done} / ${total} rapport${done > 1 ? 's' : ''} généré${done > 1 ? 's' : ''}…`;
+  });
+
+  socket.on('playerReport', (data) => {
+    allReports.push(data);
+    const card = document.createElement('div');
+    card.className = 'report-card';
+    card.innerHTML = `
+      <div class="report-card-header">
+        <div class="report-card-name">
+          ${data.characterEmoji || ''} ${data.name}
+        </div>
+        <div class="report-card-meta">
+          <span>✓ ${data.correctAnswers ?? '?'} correct</span>
+          <span>✗ ${data.wrongAnswers ?? '?'} erreur${(data.wrongAnswers ?? 0) > 1 ? 's' : ''}</span>
+          <span>${data.escaped ? '🏆 Évadé(e)' : '—'}</span>
+        </div>
+        <button class="btn-dl-report" data-idx="${allReports.length - 1}">⬇ Télécharger</button>
+      </div>
+      <div class="report-body">${escapeHtml(data.report)}</div>
+    `;
+    card.querySelector('.btn-dl-report').onclick = (e) => {
+      const r = allReports[parseInt(e.target.dataset.idx)];
+      const content = buildReportFile(r);
+      triggerDownload(`rapport_${sanitizeFilename(r.name)}.txt`, content, 'text/plain');
+    };
+    document.getElementById('reports-list').appendChild(card);
+  });
+
+  socket.on('reportsComplete', () => {
+    document.getElementById('progress-label').textContent = `✓ ${allReports.length} rapport${allReports.length > 1 ? 's' : ''} généré${allReports.length > 1 ? 's' : ''} !`;
+    document.getElementById('progress-bar').style.width   = '100%';
+    document.getElementById('btn-dl-all').style.display   = 'inline-block';
+    document.getElementById('btn-gen-reports').disabled   = false;
+  });
+
+  socket.on('reportError', (msg) => {
+    document.getElementById('progress-label').textContent = '⚠ ' + msg;
+    document.getElementById('btn-gen-reports').disabled   = false;
+  });
+
+  document.getElementById('btn-dl-all').onclick = () => {
+    const d   = new Date();
+    const ts  = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const all = allReports.map(r => buildReportFile(r)).join('\n\n' + '═'.repeat(60) + '\n\n');
+    triggerDownload(`rapports_classe_${ts}.txt`, all, 'text/plain');
+  };
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function buildReportFile(r) {
+    const d = new Date();
+    return [
+      `RAPPORT PÉDAGOGIQUE — ${r.name.toUpperCase()} (${r.characterEmoji} ${r.characterName})`,
+      `Partie du ${d.toLocaleDateString('fr-CH')} — L'Évasion Mathématique`,
+      '─'.repeat(55),
+      '',
+      r.report,
+      '',
+      '─'.repeat(55),
+      `Données brutes : ✓ ${r.correctAnswers ?? '?'} correct | ✗ ${r.wrongAnswers ?? '?'} erreur(s) | ${r.coins ?? '?'} pièces | ${r.escaped ? 'Évadé(e)' : 'Non évadé(e)'}`,
+    ].join('\n');
+  }
+
+  function triggerDownload(filename, content, type) {
+    const a  = document.createElement('a');
+    a.href   = URL.createObjectURL(new Blob([content], { type }));
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function sanitizeFilename(s) {
+    return s.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 30);
+  }
+</script>
+</body>
+</html>

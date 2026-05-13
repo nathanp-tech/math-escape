@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>L'Évasion Mathématique</title>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] },
+      options: { skipHtmlTags: ['script','noscript','style','textarea'] }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #06090f; --surface: #0a1020;
+      --cyan: #00e5ff; --magenta: #e040fb; --gold: #ffd740; --green: #00e676; --red: #ff1744;
+      --text: #e0f4ff; --dim: #546e7a;
+    }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; }
+    #game-container { position: fixed; inset: 0; }
+
+    /* ── Login ──────────────────────────────────────────────────────────────── */
+    #login-ui {
+      position: fixed; inset: 0; z-index: 200;
+      background: radial-gradient(ellipse at 50% 40%, #0d1f3c 0%, #04080f 70%);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+      overflow-y: auto; padding: 24px 16px;
+    }
+    .login-glow { font-family: 'Orbitron', sans-serif; font-size: clamp(1.8rem, 5vw, 3.2rem); font-weight: 900; color: var(--cyan); text-shadow: 0 0 30px var(--cyan), 0 0 60px rgba(0,229,255,.3); text-align: center; line-height: 1.2; margin-bottom: 8px; }
+    .login-sub { color: var(--dim); font-size: .95rem; margin-bottom: 32px; text-align: center; }
+    .login-card { background: rgba(10,16,32,.9); border: 1px solid rgba(0,229,255,.25); border-radius: 20px; padding: 28px 32px; width: min(460px, 94vw); display: flex; flex-direction: column; gap: 16px; backdrop-filter: blur(12px); }
+    .login-card input { background: rgba(0,0,0,.4); border: 1px solid rgba(0,229,255,.3); color: var(--text); padding: 14px 18px; border-radius: 10px; font-size: 1.1rem; outline: none; transition: border-color .2s; text-align: center; font-family: 'Inter', sans-serif; }
+    .login-card input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(0,229,255,.15); }
+    .login-card input::placeholder { color: var(--dim); }
+    #join-btn {
+      background: linear-gradient(135deg, var(--cyan), #0072ff); color: #000; font-weight: 800;
+      border: none; padding: 16px; border-radius: 10px; font-size: 1.05rem; cursor: pointer;
+      transition: transform .15s, box-shadow .15s, opacity .2s; font-family: 'Inter', sans-serif;
+      box-shadow: 0 0 20px rgba(0,229,255,.4);
+    }
+    #join-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 0 30px rgba(0,229,255,.6); }
+    #join-btn:active:not(:disabled) { transform: scale(.98); }
+    #join-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+    /* ── Character picker ───────────────────────────────────────────────────── */
+    .char-section-label { color: var(--dim); font-size: .82rem; font-weight: 600; text-align: center; letter-spacing: .04em; text-transform: uppercase; }
+    #char-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .char-card {
+      background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.12);
+      border-radius: 10px; padding: 10px 6px; text-align: center; cursor: pointer;
+      transition: all .2s; user-select: none; position: relative;
+    }
+    .char-card:hover:not(.taken) { border-color: var(--cyan); background: rgba(0,229,255,.1); transform: translateY(-2px); }
+    .char-card.selected { border-color: var(--cyan); background: rgba(0,229,255,.15); box-shadow: 0 0 14px rgba(0,229,255,.35); }
+    .char-card.taken { opacity: .32; cursor: not-allowed; filter: grayscale(.6); }
+    .char-card.taken::after { content: '🔒'; position: absolute; top: 3px; right: 5px; font-size: .65rem; }
+    .char-emoji { font-size: 1.9rem; display: block; line-height: 1; }
+    .char-name { font-size: .68rem; color: var(--dim); display: block; margin-top: 4px; font-weight: 600; }
+    #char-error { display: none; color: var(--red); text-align: center; font-size: .85rem; padding: 6px 0; }
+
+    /* ── Waiting room ───────────────────────────────────────────────────────── */
+    #waiting-overlay {
+      display: none; position: fixed; inset: 0; z-index: 180;
+      background: rgba(4,8,15,.92); backdrop-filter: blur(8px);
+      flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    }
+    #waiting-overlay h2 { font-family: 'Orbitron', sans-serif; font-size: 1.8rem; color: var(--text); }
+    #waiting-message { color: var(--dim); font-size: 1rem; }
+    .dots::after { content: ''; animation: dots 1.5s infinite; }
+    @keyframes dots { 0% { content:''; } 33% { content:'.'; } 66% { content:'..'; } 100% { content:'...'; } }
+    #waiting-players { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 500px; margin-top: 8px; }
+    .waiting-chip { padding: 6px 14px; border-radius: 100px; font-size: .85rem; font-weight: 600; border: 1px solid rgba(255,255,255,.1); }
+
+    /* ── HUD ────────────────────────────────────────────────────────────────── */
+    #timer-ui {
+      position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+      font-family: 'Orbitron', sans-serif; font-size: 1.5rem; font-weight: 700;
+      color: var(--gold); background: rgba(6,9,15,.85); padding: 8px 24px;
+      border: 2px solid var(--gold); border-radius: 100px; z-index: 10;
+      box-shadow: 0 0 16px rgba(255,215,64,.3); backdrop-filter: blur(4px);
+      transition: color .3s, border-color .3s, box-shadow .3s;
+    }
+    #timer-ui.danger { color: var(--red); border-color: var(--red); box-shadow: 0 0 20px rgba(255,23,68,.5); animation: timer-pulse .6s infinite; }
+    @keyframes timer-pulse { 0%,100%{transform:translateX(-50%) scale(1)} 50%{transform:translateX(-50%) scale(1.04)} }
+
+    #action-ui {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      color: var(--gold); background: rgba(6,9,15,.8); padding: 8px 20px;
+      border: 1px solid rgba(255,215,64,.4); border-radius: 100px; z-index: 10; font-size: .9rem; font-weight: 600;
+    }
+
+    /* ── Leaderboard ────────────────────────────────────────────────────────── */
+    #leaderboard {
+      position: fixed; top: 16px; right: 16px; z-index: 10;
+      background: rgba(6,9,15,.85); border: 1px solid rgba(0,229,255,.2);
+      border-radius: 16px; padding: 16px; width: 220px; backdrop-filter: blur(8px);
+    }
+    #leaderboard h3 { font-family: 'Orbitron', sans-serif; font-size: .75rem; color: var(--cyan); text-align: center; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 12px; border-bottom: 1px solid rgba(0,229,255,.2); padding-bottom: 8px; }
+    #score-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    #score-list li { font-size: .85rem; font-weight: 600; padding: 5px 8px; border-radius: 6px; background: rgba(255,255,255,.04); }
+
+    /* ── Math modal ─────────────────────────────────────────────────────────── */
+    #math-ui {
+      display: none; position: fixed; inset: 0; z-index: 100;
+      background: rgba(4,8,15,.8); backdrop-filter: blur(10px);
+      align-items: center; justify-content: center;
+    }
+    .math-card {
+      background: linear-gradient(160deg, #0d1830 0%, #060d1a 100%);
+      border: 2px solid var(--cyan); border-radius: 20px; padding: 32px 36px;
+      width: min(640px, 94vw); max-height: 92vh; overflow-y: auto;
+      box-shadow: 0 0 40px rgba(0,229,255,.25), inset 0 0 60px rgba(0,229,255,.03);
+      transition: border-color .4s, box-shadow .4s;
+    }
+    .math-card.boss-0 { --bc: #9933ff; }
+    .math-card.boss-1 { --bc: #0088ff; }
+    .math-card.boss-2 { --bc: #ff6600; }
+    .math-card.boss-3 { --bc: #ff2200; }
+    .math-card.boss-4 { --bc: #00aacc; }
+    .math-card.boss-5 { --bc: #cc0066; }
+    .math-card.boss-6 { --bc: #00cc66; }
+    .math-card.boss-7 { --bc: #ffcc00; }
+    .math-card[class*="boss-"] { border-color: var(--bc); box-shadow: 0 0 40px color-mix(in srgb, var(--bc) 30%, transparent); }
+
+    .boss-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .boss-icon { font-size: 1.8rem; }
+    .boss-name { font-family: 'Orbitron', sans-serif; font-size: 1rem; font-weight: 700; }
+    .boss-sub { font-size: .8rem; color: var(--dim); }
+
+    #question-text { font-size: 1.15rem; line-height: 1.7; background: rgba(0,0,0,.35); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,.07); margin-bottom: 20px; }
+
+    /* Single input */
+    #single-area { display: none; }
+    #answer-input { background: rgba(0,0,0,.4); border: 2px solid rgba(0,229,255,.3); color: var(--text); padding: 14px 18px; border-radius: 10px; font-size: 1.3rem; width: 100%; outline: none; text-align: center; font-family: 'Orbitron', sans-serif; transition: border-color .2s; }
+    #answer-input:focus { border-color: var(--cyan); }
+
+    /* QCM */
+    #qcm-area { display: none; }
+    #qcm-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .qcm-btn { background: rgba(0,0,0,.4); border: 2px solid rgba(255,255,255,.12); color: var(--text); padding: 14px 12px; border-radius: 12px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all .2s; font-family: 'Inter', sans-serif; text-align: center; }
+    .qcm-btn:hover { border-color: var(--cyan); background: rgba(0,229,255,.1); transform: translateY(-2px); }
+    .qcm-btn.selected { border-color: var(--cyan); background: rgba(0,229,255,.15); }
+    .qcm-btn.correct { border-color: var(--green); background: rgba(0,230,118,.2); color: var(--green); }
+    .qcm-btn.wrong-choice { border-color: var(--red); background: rgba(255,23,68,.15); color: var(--red); }
+
+    /* Expression */
+    #expr-area { display: none; }
+    #expr-display {
+      background: rgba(0,0,0,.4); border: 2px solid rgba(0,229,255,.3); color: var(--cyan);
+      padding: 14px 18px; border-radius: 10px; font-size: 1.4rem; min-height: 56px; text-align: center;
+      font-family: 'Orbitron', sans-serif; margin-bottom: 14px; letter-spacing: .05em;
+    }
+    #expr-display.empty { color: var(--dim); }
+    #math-keyboard { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 4px; }
+    .kb { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); color: var(--text); padding: 10px 4px; border-radius: 8px; font-size: .95rem; font-weight: 600; cursor: pointer; transition: all .15s; text-align: center; font-family: 'Inter', sans-serif; }
+    .kb:hover { background: rgba(0,229,255,.15); border-color: var(--cyan); }
+    .kb:active { transform: scale(.95); }
+    .kb.var-btn { color: var(--magenta); border-color: rgba(224,64,251,.3); }
+    .kb.op-btn { color: var(--cyan); }
+    .kb.pow-btn { color: var(--gold); }
+    .kb.clear-btn { background: rgba(255,23,68,.12); border-color: rgba(255,23,68,.3); color: var(--red); grid-column: span 2; }
+    .kb.back-btn { background: rgba(255,152,0,.12); border-color: rgba(255,152,0,.3); color: #ff9800; }
+
+    /* Feedback / loading */
+    #loading-feedback { display: none; text-align: center; color: var(--cyan); padding: 12px; font-size: .9rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(0,229,255,.3); border-top-color: var(--cyan); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 8px; }
+    #feedback-text { display: none; background: rgba(255,23,68,.1); border: 1px solid rgba(255,23,68,.3); border-radius: 10px; padding: 14px 16px; color: #ff8a80; font-size: .95rem; line-height: 1.6; margin-top: 12px; }
+    @keyframes fadeSlide { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+    .fade-in { animation: fadeSlide .35s ease-out forwards; }
+
+    /* Attempts indicator */
+    #attempts-indicator { text-align: center; font-size: .82rem; font-weight: 700; height: 22px; margin-top: 8px; transition: color .3s; letter-spacing: .02em; }
+
+    /* Submit row */
+    .submit-row { display: flex; gap: 10px; margin-top: 16px; }
+    #submit-btn { flex: 1; background: linear-gradient(135deg, var(--cyan), #0072ff); color: #000; border: none; padding: 14px; border-radius: 10px; font-size: 1rem; font-weight: 800; cursor: pointer; transition: all .2s; font-family: 'Inter', sans-serif; }
+    #submit-btn:hover { box-shadow: 0 0 20px rgba(0,229,255,.5); }
+    #submit-btn:disabled { opacity: .4; cursor: not-allowed; }
+    #cancel-btn { background: rgba(255,255,255,.06); color: var(--text); border: 1px solid rgba(255,255,255,.15); padding: 14px 20px; border-radius: 10px; font-size: .95rem; cursor: pointer; transition: all .2s; font-family: 'Inter', sans-serif; }
+    #cancel-btn:hover { background: rgba(255,255,255,.1); }
+
+    /* ── Game Over ───────────────────────────────────────────────────────────── */
+    #game-over-ui {
+      display: none; position: fixed; inset: 0; z-index: 300;
+      background: rgba(4,8,15,.96); backdrop-filter: blur(16px);
+      flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+      padding: 24px; overflow-y: auto;
+    }
+    #game-over-ui h1 { font-family: 'Orbitron', sans-serif; font-size: clamp(2rem, 6vw, 3.5rem); color: var(--gold); text-shadow: 0 0 30px var(--gold); text-transform: uppercase; text-align: center; }
+    #podium { display: flex; flex-direction: column; gap: 6px; width: min(460px, 92vw); }
+    .podium-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px; font-size: 1rem; font-weight: 600; }
+    .podium-row.rank-1 { background: rgba(255,215,64,.15); border: 1px solid rgba(255,215,64,.4); font-size: 1.15rem; }
+    .podium-row.rank-2 { background: rgba(176,190,197,.1); border: 1px solid rgba(176,190,197,.3); }
+    .podium-row.rank-3 { background: rgba(205,127,50,.1); border: 1px solid rgba(205,127,50,.3); }
+    .podium-row.rank-other { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); }
+    .rank-badge { font-size: 1.3rem; width: 32px; text-align: center; }
+    .rank-name { flex: 1; }
+    .rank-score { font-family: 'Orbitron', sans-serif; color: var(--gold); }
+
+    /* Teacher stats table */
+    #teacher-stats {
+      display: none; width: min(600px, 94vw);
+      background: rgba(10,16,32,.8); border: 1px solid rgba(0,229,255,.2);
+      border-radius: 16px; padding: 20px; backdrop-filter: blur(8px);
+    }
+    #teacher-stats h3 { font-family: 'Orbitron', sans-serif; font-size: .8rem; color: var(--cyan); text-transform: uppercase; letter-spacing: .1em; text-align: center; margin-bottom: 14px; }
+    #stats-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    #stats-table th { color: var(--dim); font-weight: 600; text-transform: uppercase; font-size: .72rem; letter-spacing: .08em; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,.1); text-align: left; }
+    #stats-table td { padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,.05); }
+    #stats-table tr:last-child td { border-bottom: none; }
+    #stats-table tr:hover td { background: rgba(255,255,255,.03); }
+    .stat-correct { color: var(--green); font-weight: 700; }
+    .stat-wrong { color: var(--red); font-weight: 700; }
+    .stat-escaped { color: var(--gold); }
+
+    .forms-section { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .forms-section p { color: var(--dim); font-size: .95rem; }
+    #forms-btn {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: linear-gradient(135deg, #00c853, #1b5e20);
+      color: #fff; font-weight: 700; text-decoration: none;
+      padding: 16px 32px; border-radius: 12px; font-size: 1rem;
+      box-shadow: 0 0 24px rgba(0,200,83,.4); transition: all .2s;
+    }
+    #forms-btn:hover { transform: translateY(-2px); box-shadow: 0 0 36px rgba(0,200,83,.6); }
+    #restart-btn { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.15); color: var(--text); padding: 12px 28px; border-radius: 10px; font-size: .95rem; cursor: pointer; font-family: 'Inter', sans-serif; transition: all .2s; }
+    #restart-btn:hover { background: rgba(255,255,255,.12); }
+  </style>
+</head>
+<body>
+
+<!-- ── Login ── -->
+<div id="login-ui">
+  <div class="login-glow">L'Évasion<br>Mathématique</div>
+  <p class="login-sub">Résous les équations, bats les boss, évade-toi !</p>
+  <div class="login-card">
+    <input type="text" id="username-input" placeholder="Ton pseudo..." maxlength="12" autocomplete="off">
+    <div>
+      <p class="char-section-label" style="margin-bottom:10px;">Choisis ton personnage</p>
+      <div id="char-grid">
+        <div style="color:var(--dim);text-align:center;padding:12px;font-size:.85rem;grid-column:1/-1">Connexion en cours…</div>
+      </div>
+      <p id="char-error"></p>
+    </div>
+    <button id="join-btn" disabled>Entrer dans le labyrinthe →</button>
+  </div>
+</div>
+
+<!-- ── Waiting room ── -->
+<div id="waiting-overlay">
+  <h2>Salle d'attente</h2>
+  <p id="waiting-message">En attente du professeur<span class="dots"></span></p>
+  <div id="waiting-players"></div>
+</div>
+
+<!-- ── HUD ── -->
+<div id="timer-ui">⏱ En attente</div>
+<div id="action-ui">↑ Sauter &nbsp;|&nbsp; Entrée : interagir avec un boss</div>
+
+<!-- ── Phaser ── -->
+<div id="game-container"></div>
+
+<!-- ── Leaderboard ── -->
+<div id="leaderboard">
+  <h3>Classement</h3>
+  <ul id="score-list"></ul>
+</div>
+
+<!-- ── Math modal ── -->
+<div id="math-ui">
+  <div class="math-card" id="math-card">
+    <div class="boss-header">
+      <span class="boss-icon">🔒</span>
+      <div>
+        <div class="boss-name" id="boss-name-display">Terminal verrouillé</div>
+        <div class="boss-sub" id="boss-sub-display">Résous l'équation pour continuer</div>
+      </div>
+    </div>
+
+    <div id="question-text"></div>
+
+    <!-- Single -->
+    <div id="single-area">
+      <input type="text" id="answer-input" placeholder="Ta réponse..." autocomplete="off" inputmode="decimal">
+    </div>
+
+    <!-- QCM -->
+    <div id="qcm-area">
+      <div id="qcm-choices"></div>
+    </div>
+
+    <!-- Expression keyboard -->
+    <div id="expr-area">
+      <div id="expr-display" class="empty">_</div>
+      <div id="math-keyboard">
+        <button class="kb" data-c="7">7</button>
+        <button class="kb" data-c="8">8</button>
+        <button class="kb" data-c="9">9</button>
+        <button class="kb op-btn" data-c="+">+</button>
+        <button class="kb op-btn" data-c="-">−</button>
+        <button class="kb" data-c="4">4</button>
+        <button class="kb" data-c="5">5</button>
+        <button class="kb" data-c="6">6</button>
+        <button class="kb op-btn" data-c="×">×</button>
+        <button class="kb op-btn" data-c="÷">÷</button>
+        <button class="kb" data-c="1">1</button>
+        <button class="kb" data-c="2">2</button>
+        <button class="kb" data-c="3">3</button>
+        <button class="kb op-btn" data-c="(">(</button>
+        <button class="kb op-btn" data-c=")">)</button>
+        <button class="kb" data-c="0">0</button>
+        <button class="kb" data-c=".">.</button>
+        <button class="kb op-btn" data-c="/">/</button>
+        <button class="kb pow-btn" data-c="²">²</button>
+        <button class="kb pow-btn" data-c="³">³</button>
+        <button class="kb var-btn" id="kb-var-n" data-c="n">n</button>
+        <button class="kb var-btn" id="kb-var-x" data-c="x">x</button>
+        <button class="kb var-btn" id="kb-var-a" data-c="a">a</button>
+        <button class="kb var-btn" id="kb-var-y" data-c="y">y</button>
+        <button class="kb back-btn" id="kb-back">⌫</button>
+        <button class="kb clear-btn" id="kb-clear">C Effacer</button>
+      </div>
+    </div>
+
+    <div id="loading-feedback"><span class="spinner"></span> Vérification en cours…</div>
+    <div id="feedback-text"></div>
+    <div id="attempts-indicator"></div>
+
+    <div class="submit-row" id="submit-row">
+      <button id="submit-btn">✓ Valider</button>
+      <button id="cancel-btn">Quitter</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Game Over ── -->
+<div id="game-over-ui">
+  <h1>🏆 Fin du jeu</h1>
+  <div id="podium"></div>
+
+  <!-- Teacher only: detailed stats table -->
+  <div id="teacher-stats">
+    <h3>Statistiques par élève</h3>
+    <table id="stats-table">
+      <thead>
+        <tr>
+          <th>Joueur</th>
+          <th>Personnage</th>
+          <th>✓ Correct</th>
+          <th>✗ Erreurs</th>
+          <th>Pièces</th>
+          <th>Évadé</th>
+        </tr>
+      </thead>
+      <tbody id="stats-body"></tbody>
+    </table>
+  </div>
+
+  <div class="forms-section">
+    <p>La partie est terminée. Réponds maintenant au questionnaire :</p>
+    <a id="forms-btn" href="#" target="_blank" rel="noopener">
+      📋 Ouvrir le questionnaire
+    </a>
+    <button id="restart-btn">↩ Rejouer</button>
+  </div>
+</div>
+
+<script src="game.js?v=11"></script>
+</body>
+</html>
