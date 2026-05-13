@@ -23,13 +23,12 @@ if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir);
 const WRONG_COOLDOWN_MS  = 3000; // delay between wrong attempts (anti-spam)
 const MAX_WRONG_PER_BOSS = 3;    // wrong answers before auto-skip
 
-// ─── Question bank — 1 fixed question per boss, same for all players ──────────
-// type: 'qcm' | 'single' | 'expression'
 // ─── Question bank — 2 variants per boss, selected randomly each game ─────────
+// difficulty: 'facile' | 'moyen' | 'difficile' (used in reports)
 const BOSS_CONFIGS = [
   {
     id: 0, name: 'Gardien des Symboles', subtitle: 'Conventions algébriques',
-    cssColor: '#9933ff', phaserColor: 0x9933ff,
+    difficulty: 'facile', cssColor: '#9933ff', phaserColor: 0x9933ff,
     questions: [
       { type: 'qcm', question: "Comment écrire «le produit de 13 par \\(x\\)» ?",
         choices: ['13 + x', '13x', 'x13', '13 ÷ x'], answer: '13x',
@@ -41,7 +40,7 @@ const BOSS_CONFIGS = [
   },
   {
     id: 1, name: 'Seigneur des Substitutions', subtitle: 'Valeur numérique simple',
-    cssColor: '#0088ff', phaserColor: 0x0088ff,
+    difficulty: 'facile', cssColor: '#0088ff', phaserColor: 0x0088ff,
     questions: [
       { type: 'single', question: "Calcule \\(5y\\) pour \\(y = 3{,}5\\)", acceptedAnswers: ['17.5', '17,5'] },
       { type: 'single', question: "Calcule \\(3a\\) pour \\(a = 4\\)", acceptedAnswers: ['12'] }
@@ -49,7 +48,7 @@ const BOSS_CONFIGS = [
   },
   {
     id: 2, name: 'Maître du Négatif', subtitle: 'Nombres relatifs',
-    cssColor: '#ff6600', phaserColor: 0xff6600,
+    difficulty: 'moyen', cssColor: '#ff6600', phaserColor: 0xff6600,
     questions: [
       { type: 'single', question: "Calcule \\(a + 7\\) pour \\(a = -3\\)", acceptedAnswers: ['4'] },
       { type: 'single', question: "Calcule \\(b - 5\\) pour \\(b = -2\\)", acceptedAnswers: ['-7'] }
@@ -57,7 +56,7 @@ const BOSS_CONFIGS = [
   },
   {
     id: 3, name: 'Archimage des Expressions', subtitle: 'Substitution composée',
-    cssColor: '#ff2200', phaserColor: 0xff2200,
+    difficulty: 'moyen', cssColor: '#ff2200', phaserColor: 0xff2200,
     questions: [
       { type: 'single', question: "Calcule \\(4x + 5\\) pour \\(x = 3\\)", acceptedAnswers: ['17'] },
       { type: 'single', question: "Calcule \\(2x - 3\\) pour \\(x = 5\\)", acceptedAnswers: ['7'] }
@@ -65,7 +64,7 @@ const BOSS_CONFIGS = [
   },
   {
     id: 4, name: 'Titan de la Géométrie', subtitle: 'Aires et périmètres',
-    cssColor: '#00aacc', phaserColor: 0x00aacc,
+    difficulty: 'moyen', cssColor: '#00aacc', phaserColor: 0x00aacc,
     questions: [
       { type: 'single', question: "Calcule \\(\\dfrac{b \\cdot h}{2}\\) pour \\(b = 6\\) et \\(h = 4\\)", acceptedAnswers: ['12'] },
       { type: 'single', question: "Calcule \\(2(l + w)\\) pour \\(l = 5\\) et \\(w = 3\\)", acceptedAnswers: ['16'] }
@@ -73,7 +72,7 @@ const BOSS_CONFIGS = [
   },
   {
     id: 5, name: 'Titan des Puissances', subtitle: 'Puissances et polynômes',
-    cssColor: '#cc0066', phaserColor: 0xcc0066,
+    difficulty: 'difficile', cssColor: '#cc0066', phaserColor: 0xcc0066,
     questions: [
       { type: 'single', question: "Calcule \\(3x^2 - 2x + 1\\) pour \\(x = 4\\)", acceptedAnswers: ['41'] },
       { type: 'single', question: "Calcule \\(2x^2 + x\\) pour \\(x = 3\\)", acceptedAnswers: ['21'] }
@@ -81,7 +80,7 @@ const BOSS_CONFIGS = [
   },
   {
     id: 6, name: "Oracle de l'Algèbre", subtitle: 'Traduction verbale',
-    cssColor: '#00cc66', phaserColor: 0x00cc66,
+    difficulty: 'difficile', cssColor: '#00cc66', phaserColor: 0x00cc66,
     questions: [
       { type: 'expression', question: "Yannick pense à un nombre \\(n\\). Il le triple puis soustrait 7. Écris le résultat.",
         acceptedAnswers: ['3n-7', '3*n-7'], displayAnswer: '3n − 7', hint: "Triple = 3n, puis −7.", variable: 'n' },
@@ -91,7 +90,7 @@ const BOSS_CONFIGS = [
   },
   {
     id: 7, name: 'Le Grand Maître', subtitle: 'Équivalences',
-    cssColor: '#ffcc00', phaserColor: 0xffcc00,
+    difficulty: 'difficile', cssColor: '#ffcc00', phaserColor: 0xffcc00,
     questions: [
       { type: 'qcm', question: "Les expressions \\(2(x+3)\\) et \\(2x+6\\) sont-elles toujours égales ?",
         choices: ['Oui, toujours', 'Non, jamais', 'Parfois seulement'], answer: 'Oui, toujours',
@@ -274,11 +273,17 @@ function stopGame(reason) {
   io.to('admins').emit('adminState', buildAdminState());
 }
 
-// ─── AI report generation ─────────────────────────────────────────────────────
-async function generatePlayerReport(player) {
+// ─── Report generation (objective, no AI) ────────────────────────────────────
+function formatTime(sec) {
+  if (!sec || sec < 0) return 'N/A';
+  if (sec < 60) return `${sec}s`;
+  return `${Math.floor(sec / 60)}m ${sec % 60}s`;
+}
+
+function generatePlayerReport(player) {
   const answers = player.answers || [];
 
-  // Group answers by bossId (preserve encounter order)
+  // Group by bossId in encounter order
   const seenBossIds = [];
   const byBoss = {};
   answers.forEach(a => {
@@ -286,71 +291,77 @@ async function generatePlayerReport(player) {
     byBoss[a.bossId].push(a);
   });
 
-  // ── Objective section ──────────────────────────────────────────────────────
-  const objectiveLines = seenBossIds.map(bossId => {
+  if (!seenBossIds.length) return 'Aucune question rencontrée pendant cette partie.';
+
+  const DIFF_LABEL = { facile: '⭐ Facile', moyen: '⭐⭐ Moyen', difficile: '⭐⭐⭐ Difficile' };
+  const SEP = '─'.repeat(44);
+
+  // ── Per-boss detail ────────────────────────────────────────────────────────
+  const bossLines = seenBossIds.map(bossId => {
     const boss = BOSSES[bossId];
     if (!boss) return null;
-    const bossAnswers = byBoss[bossId];
+    const bossAnswers  = byBoss[bossId];
+    const attempts     = bossAnswers.length;
+    const succeeded    = bossAnswers.some(a => a.correct);
+    const lastAnswer   = bossAnswers[bossAnswers.length - 1];
+    const timeSec      = lastAnswer?.timeSpentSeconds ?? null;
+    const diff         = boss.difficulty || 'moyen';
 
-    // Strip LaTeX delimiters for readability in plain text
+    // Strip LaTeX delimiters for plain text display
     const qText = (boss.question?.question || '?')
-      .replace(/\\\(|\\\)/g, '').replace(/\\\[|\\\]/g, '').trim();
+      .replace(/\\\(|\\\)/g, '').replace(/\\\[|\\\]/g, '')
+      .replace(/\s+/g, ' ').trim();
 
-    const answerChain = bossAnswers.map(a => (a.correct ? `✓ "${a.answer}"` : `✗ "${a.answer}"`)).join(' → ');
-    const lastEntry   = bossAnswers[bossAnswers.length - 1];
-    const timePart    = (lastEntry?.timeSpentSeconds != null)
-      ? ` | Temps : ${lastEntry.timeSpentSeconds}s`
-      : '';
+    const answerChain = bossAnswers
+      .map(a => (a.correct ? `✓ "${a.answer}"` : `✗ "${a.answer}"`))
+      .join(' → ');
 
-    return `Boss ${bossId + 1} — ${boss.name} (${boss.subtitle})\nQuestion : ${qText}\nRéponses : ${answerChain}${timePart}`;
+    return [
+      `${DIFF_LABEL[diff]}  —  Boss ${bossId + 1} : ${boss.name}`,
+      `Notion     : ${boss.subtitle}`,
+      `Question   : ${qText}`,
+      `Réponses   : ${answerChain}`,
+      `Tentatives : ${attempts}  |  Temps : ${formatTime(timeSec)}  |  Résultat : ${succeeded ? '✓ Réussi' : '✗ Non réussi'}`
+    ].join('\n');
   }).filter(Boolean);
 
-  const objectiveSection = objectiveLines.length
-    ? objectiveLines.join('\n\n')
-    : 'Aucun boss rencontré.';
+  // ── Summary stats ─────────────────────────────────────────────────────────
+  const totalQ     = seenBossIds.length;
+  const succeededQ = seenBossIds.filter(id => byBoss[id].some(a => a.correct)).length;
+  const totalTries = answers.length;
+  const successPct = Math.round((succeededQ / totalQ) * 100);
+  const avgTries   = (totalTries / totalQ).toFixed(1);
 
-  // ── AI analysis (forces & faiblesses) ─────────────────────────────────────
-  const bossForAI = seenBossIds.map(bossId => {
-    const boss = BOSSES[bossId];
-    if (!boss) return '';
-    const bossAnswers = byBoss[bossId];
-    const succeeded   = bossAnswers.some(a => a.correct);
-    const wrongs      = bossAnswers.filter(a => !a.correct).map(a => `"${a.answer}"`).join(', ');
-    return `Boss ${bossId + 1} "${boss.name}" (${boss.subtitle}): ${succeeded ? 'réussi' : 'non réussi'}${wrongs ? `, erreurs : ${wrongs}` : ''}`;
+  const validTimes = seenBossIds
+    .map(id => byBoss[id][byBoss[id].length - 1]?.timeSpentSeconds ?? null)
+    .filter(t => t !== null);
+  const totalTimeSec = validTimes.reduce((s, t) => s + t, 0);
+  const avgTimeSec   = validTimes.length ? Math.round(totalTimeSec / validTimes.length) : 0;
+
+  // Per-difficulty breakdown
+  const diffRows = ['facile', 'moyen', 'difficile'].map(d => {
+    const ids = seenBossIds.filter(id => (BOSSES[id]?.difficulty || 'moyen') === d);
+    if (!ids.length) return null;
+    const ok  = ids.filter(id => byBoss[id].some(a => a.correct)).length;
+    const pct = Math.round((ok / ids.length) * 100);
+    return `  ${(DIFF_LABEL[d] + ' ').padEnd(20)}: ${ok}/${ids.length} réussies (${pct}%)`;
   }).filter(Boolean).join('\n');
 
-  const aiPrompt = `Tu es un enseignant de maths bienveillant (9e, Vaud, Suisse).
-Donne une analyse pédagogique courte (80-120 mots) pour l'élève ${player.name} (${player.characterEmoji} ${player.characterName}).
+  const summary = [
+    `Questions rencontrées  : ${totalQ} / ${BOSSES.length}`,
+    `Taux de réussite global: ${successPct}%  (${succeededQ}/${totalQ})`,
+    ``,
+    `Par niveau :`,
+    diffRows,
+    ``,
+    `Temps total (questions): ${formatTime(totalTimeSec)}`,
+    `Temps moyen / question : ${formatTime(avgTimeSec)}`,
+    `Tentatives totales     : ${totalTries}  (moy. ${avgTries} / question)`,
+    `Pièces en fin de partie: ${player.coins || 0}`,
+    `Évasion réussie        : ${player.escaped ? 'Oui 🏆' : 'Non'}`,
+  ].join('\n');
 
-Résultats :
-${bossForAI || 'Aucun boss rencontré'}
-Bonnes : ${player.correctAnswersCount} | Mauvaises : ${player.wrongAnswersCount} | Pièces : ${player.coins}
-${player.escaped ? "A réussi à s'évader !" : "N'a pas réussi à s'évader."}
-
-Structure ta réponse ainsi (3 blocs, sans titres supplémentaires) :
-✅ 1-2 points forts observés
-📚 1-2 points à améliorer (conseil concret lié aux erreurs réelles)
-💪 Une phrase d'encouragement
-
-Tutoie l'élève. Utilise \\(...\\) pour les formules. Ne commence pas par "Cher(e)" ni son prénom.`;
-
-  let aiAnalysis = '';
-  try {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4-turbo',
-      messages: [
-        { role: 'system', content: 'Tu es un expert en pédagogie mathématique. Tes analyses sont concises et bienveillantes.' },
-        { role: 'user', content: aiPrompt }
-      ],
-      max_tokens: 350
-    });
-    aiAnalysis = completion.choices[0].message.content;
-  } catch (e) {
-    console.error('Report AI error:', e.message);
-    aiAnalysis = 'Analyse IA indisponible.';
-  }
-
-  return `${objectiveSection}\n\n---\n${aiAnalysis}`;
+  return `${SEP}\nDÉTAIL DES QUESTIONS\n${SEP}\n\n${bossLines.join('\n\n')}\n\n${SEP}\nRÉCAPITULATIF\n${SEP}\n${summary}`;
 }
 
 // ─── Socket.io ────────────────────────────────────────────────────────────────
@@ -384,7 +395,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('adminGenerateReports', async () => {
+  socket.on('adminGenerateReports', () => {
     if (!socket.rooms.has('admins')) return;
     if (!lastSessionData || !Object.keys(lastSessionData.players).length) {
       socket.emit('reportError', 'Aucune session disponible.');
@@ -392,30 +403,20 @@ io.on('connection', (socket) => {
     }
     const playerList = Object.values(lastSessionData.players);
     socket.emit('reportProgress', { total: playerList.length, done: 0 });
-    let done = 0;
-    for (const player of playerList) {
-      try {
-        const report = await generatePlayerReport(player);
-        socket.emit('playerReport', {
-          name: player.name,
-          characterEmoji: player.characterEmoji || '',
-          characterName: player.characterName || '',
-          correctAnswers: player.correctAnswersCount,
-          wrongAnswers: player.wrongAnswersCount,
-          coins: player.coins,
-          escaped: player.escaped,
-          report
-        });
-      } catch (e) {
-        console.error('Report error for', player.name, e.message);
-        socket.emit('playerReport', {
-          name: player.name, characterEmoji: player.characterEmoji || '',
-          characterName: player.characterName || '', report: 'Erreur lors de la génération du rapport.'
-        });
-      }
-      done++;
-      socket.emit('reportProgress', { total: playerList.length, done });
-    }
+    playerList.forEach((player, i) => {
+      const report = generatePlayerReport(player);
+      socket.emit('playerReport', {
+        name: player.name,
+        characterEmoji: player.characterEmoji || '',
+        characterName: player.characterName || '',
+        correctAnswers: player.correctAnswersCount,
+        wrongAnswers: player.wrongAnswersCount,
+        coins: player.coins,
+        escaped: player.escaped,
+        report
+      });
+      socket.emit('reportProgress', { total: playerList.length, done: i + 1 });
+    });
     socket.emit('reportsComplete');
   });
 
