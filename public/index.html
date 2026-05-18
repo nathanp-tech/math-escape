@@ -117,14 +117,23 @@
       box-shadow: 0 0 40px rgba(0,229,255,.25), inset 0 0 60px rgba(0,229,255,.03);
       transition: border-color .4s, box-shadow .4s;
     }
-    .math-card.boss-0 { --bc: #9933ff; }
-    .math-card.boss-1 { --bc: #0088ff; }
-    .math-card.boss-2 { --bc: #ff6600; }
-    .math-card.boss-3 { --bc: #ff2200; }
-    .math-card.boss-4 { --bc: #00aacc; }
-    .math-card.boss-5 { --bc: #cc0066; }
-    .math-card.boss-6 { --bc: #00cc66; }
-    .math-card.boss-7 { --bc: #ffcc00; }
+    .math-card.boss-0  { --bc: #9966ff; }
+    .math-card.boss-1  { --bc: #6699ff; }
+    .math-card.boss-2  { --bc: #33aaff; }
+    .math-card.boss-3  { --bc: #00cccc; }
+    .math-card.boss-4  { --bc: #00bb77; }
+    .math-card.boss-5  { --bc: #44cc00; }
+    .math-card.boss-6  { --bc: #aacc00; }
+    .math-card.boss-7  { --bc: #ffcc00; }
+    .math-card.boss-8  { --bc: #ffaa00; }
+    .math-card.boss-9  { --bc: #ff7700; }
+    .math-card.boss-10 { --bc: #ff5500; }
+    .math-card.boss-11 { --bc: #ff2200; }
+    .math-card.boss-12 { --bc: #ff0055; }
+    .math-card.boss-13 { --bc: #cc0066; }
+    .math-card.boss-14 { --bc: #aa0044; }
+    .math-card.boss-15 { --bc: #770022; }
+    .math-card.boss-16 { --bc: #440000; }
     .math-card[class*="boss-"] { border-color: var(--bc); box-shadow: 0 0 40px color-mix(in srgb, var(--bc) 30%, transparent); }
 
     .boss-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
@@ -133,6 +142,8 @@
     .boss-sub { font-size: .8rem; color: var(--dim); }
 
     #question-text { font-size: 1.15rem; line-height: 1.7; background: rgba(0,0,0,.35); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,.07); margin-bottom: 20px; }
+
+    #question-image { display: none; width: 100%; max-height: 220px; object-fit: contain; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04); }
 
     /* Single input */
     #single-area { display: none; }
@@ -284,6 +295,7 @@
     </div>
 
     <div id="question-text"></div>
+    <img id="question-image" alt="Figure de l'exercice">
 
     <!-- Single -->
     <div id="single-area">

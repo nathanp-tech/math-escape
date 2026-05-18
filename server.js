@@ -23,90 +23,185 @@ const logsDir = path.join(__dirname, 'logs');
 if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir);
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const WRONG_COOLDOWN_MS  = 3000; // delay between wrong attempts (anti-spam)
+const WRONG_COOLDOWN_MS  = 5000; // delay between wrong attempts (anti-spam)
 const MAX_WRONG_PER_BOSS = 3;    // wrong answers before auto-skip
 
-// ─── Question bank — 2 variants per boss, selected randomly each game ─────────
+// ─── Question bank — 14 bosses, 1 fixed question each, increasing difficulty ────
 // difficulty: 'facile' | 'moyen' | 'difficile' (used in reports)
+// Inspired by exercises FA63, FA69, FA70, FA76, FA77 and classroom sheets
 const BOSS_CONFIGS = [
   {
-    id: 0, name: 'Gardien des Symboles', subtitle: 'Conventions algébriques',
-    difficulty: 'facile', cssColor: '#9933ff', phaserColor: 0x9933ff,
-    questions: [
-      { type: 'qcm', question: "Comment écrire «le produit de 13 par \\(x\\)» ?",
-        choices: ['13 + x', '13x', 'x13', '13 ÷ x'], answer: '13x',
-        wrongFeedback: { '13 + x': "Le produit c'est ×, pas + !", 'x13': "Le coefficient s'écrit avant la lettre → 13x.", '13 ÷ x': "Produit = multiplication, pas division !" } },
-      { type: 'qcm', question: "Laquelle de ces écritures signifie «le triple de \\(y\\)» ?",
-        choices: ['3 + y', '3y', 'y3', 'y ÷ 3'], answer: '3y',
-        wrongFeedback: { '3 + y': "Triple = multiplié par 3, pas additionné !", 'y3': "Le coefficient s'écrit avant la lettre → 3y.", 'y ÷ 3': "Triple = ×3, pas ÷3 !" } }
-    ]
+    id:  0, name: 'Gardien des Symboles',   subtitle: 'Conventions algébriques',
+    difficulty: 'facile', cssColor: '#9966ff', phaserColor: 0x9966ff,
+    question: { type: 'qcm', question: "Comment écrire «le triple de \\(x\\)» ?",
+      choices: ['3 + x', '3x', 'x3', 'x ÷ 3'], answer: '3x',
+      wrongFeedback: { '3 + x': "Triple = ×3, pas +3 !", 'x3': "Le coefficient s'écrit avant la lettre → 3x.", 'x ÷ 3': "Triple = multiplié par 3, pas divisé !" } }
   },
   {
-    id: 1, name: 'Seigneur des Substitutions', subtitle: 'Valeur numérique simple',
-    difficulty: 'facile', cssColor: '#0088ff', phaserColor: 0x0088ff,
-    questions: [
-      { type: 'single', question: "Calcule \\(5y\\) pour \\(y = 3{,}5\\)", acceptedAnswers: ['17.5', '17,5'] },
-      { type: 'single', question: "Calcule \\(3a\\) pour \\(a = 4\\)", acceptedAnswers: ['12'] }
-    ]
+    id:  1, name: 'Maître des Notations',   subtitle: 'Conventions algébriques',
+    difficulty: 'facile', cssColor: '#6699ff', phaserColor: 0x6699ff,
+    question: { type: 'qcm', question: "Comment écrire «le cube de \\(a\\)» ?",
+      choices: ['3a', 'a + 3', 'a³', '3 · a'], answer: 'a³',
+      wrongFeedback: { '3a': "3a = 3 fois a. Le cube = a·a·a = a³ !", 'a + 3': "Le cube n'est pas une addition !", '3 · a': "3·a = 3a. Le cube = a³ !" } }
   },
   {
-    id: 2, name: 'Maître du Négatif', subtitle: 'Nombres relatifs',
-    difficulty: 'moyen', cssColor: '#ff6600', phaserColor: 0xff6600,
-    questions: [
-      { type: 'single', question: "Calcule \\(a + 7\\) pour \\(a = -3\\)", acceptedAnswers: ['4'] },
-      { type: 'single', question: "Calcule \\(b - 5\\) pour \\(b = -2\\)", acceptedAnswers: ['-7'] }
-    ]
+    id:  2, name: 'Oracle des Conventions', subtitle: 'Conventions algébriques',
+    difficulty: 'facile', cssColor: '#33aaff', phaserColor: 0x33aaff,
+    question: { type: 'qcm', question: "Laquelle signifie «le tiers de \\(n\\)» ?",
+      choices: ['3n', 'n - 3', 'n / 3', 'n + 3'], answer: 'n / 3',
+      wrongFeedback: { '3n': "3n = 3 fois n. Le tiers = divisé par 3 !", 'n - 3': "Le tiers, c'est diviser par 3, pas soustraire !", 'n + 3': "Le tiers = n ÷ 3, pas n + 3 !" } }
   },
   {
-    id: 3, name: 'Archimage des Expressions', subtitle: 'Substitution composée',
+    id:  3, name: 'Seigneur des Valeurs',   subtitle: 'Valeur numérique — a = 5, b = 3',
+    difficulty: 'facile', cssColor: '#00cccc', phaserColor: 0x00cccc,
+    question: { type: 'single', question: "Calcule \\(a + b + a\\) si \\(a = 5\\) et \\(b = 3\\)", acceptedAnswers: ['13'] }
+  },
+  {
+    id:  4, name: 'Baron des Calculs',      subtitle: 'Géométrie — périmètre numérique',
+    difficulty: 'facile', cssColor: '#00bb77', phaserColor: 0x00bb77,
+    question: { type: 'single',
+      question: "Calcule le <strong>périmètre</strong> du rectangle (longueur 8, largeur \\(x\\)) si \\(x = 2\\).",
+      acceptedAnswers: ['20'], image: '/images/rectangle.png' }
+  },
+  {
+    id:  5, name: 'Titan des Relatifs',     subtitle: 'Nombres relatifs — y = −4',
+    difficulty: 'moyen', cssColor: '#44cc00', phaserColor: 0x44cc00,
+    question: { type: 'single', question: "Calcule \\(5y - 3\\) si \\(y = -4\\)", acceptedAnswers: ['-23'] }
+  },
+  {
+    id:  6, name: 'Démon des Parenthèses',  subtitle: 'Substitution avec parenthèses',
+    difficulty: 'moyen', cssColor: '#ffcc00', phaserColor: 0xffcc00,
+    question: { type: 'single', question: "Calcule \\(4 \\cdot (x - 3)\\) si \\(x = 2\\)", acceptedAnswers: ['-4'] }
+  },
+  {
+    id:  7, name: 'Titan des Puissances',   subtitle: 'Puissances',
+    difficulty: 'moyen', cssColor: '#ff7700', phaserColor: 0xff7700,
+    question: { type: 'single', question: "Calcule \\(x^2\\) si \\(x = -3\\)", acceptedAnswers: ['9'] }
+  },
+  {
+    id:  8, name: 'Dieu des Figures',       subtitle: 'Géométrie — aire',
     difficulty: 'moyen', cssColor: '#ff2200', phaserColor: 0xff2200,
-    questions: [
-      { type: 'single', question: "Calcule \\(4x + 5\\) pour \\(x = 3\\)", acceptedAnswers: ['17'] },
-      { type: 'single', question: "Calcule \\(2x - 3\\) pour \\(x = 5\\)", acceptedAnswers: ['7'] }
-    ]
+    question: { type: 'single',
+      question: "Calcule l'<strong>aire</strong> du carré (côté \\(x\\)) si \\(x = 4{,}5\\).",
+      acceptedAnswers: ['20.25', '20,25'], image: '/images/carre.png' }
   },
   {
-    id: 4, name: 'Titan de la Géométrie', subtitle: 'Aires et périmètres',
-    difficulty: 'moyen', cssColor: '#00aacc', phaserColor: 0x00aacc,
-    questions: [
-      { type: 'single', question: "Calcule \\(\\dfrac{b \\cdot h}{2}\\) pour \\(b = 6\\) et \\(h = 4\\)", acceptedAnswers: ['12'] },
-      { type: 'single', question: "Calcule \\(2(l + w)\\) pour \\(l = 5\\) et \\(w = 3\\)", acceptedAnswers: ['16'] }
-    ]
+    id:  9, name: "Seigneur de l'Espace",   subtitle: 'Géométrie — expression du périmètre',
+    difficulty: 'moyen', cssColor: '#ff0055', phaserColor: 0xff0055,
+    question: { type: 'expression',
+      question: "Écris l'expression du <strong>périmètre</strong> du rectangle (longueur 8, largeur \\(x\\)).",
+      acceptedAnswers: ['2(8+x)', '2(x+8)', '16+2x', '2x+16', '2*(8+x)', '2*(x+8)', '8+x+8+x', 'x+8+x+8', '8+x+x+8', 'x+8+8+x', '8+8+x+x', 'x+x+8+8'],
+      displayAnswer: '2(8 + x)', variable: 'x', image: '/images/rectangle.png' }
   },
   {
-    id: 5, name: 'Titan des Puissances', subtitle: 'Puissances et polynômes',
-    difficulty: 'difficile', cssColor: '#cc0066', phaserColor: 0xcc0066,
-    questions: [
-      { type: 'single', question: "Calcule \\(3x^2 - 2x + 1\\) pour \\(x = 4\\)", acceptedAnswers: ['41'] },
-      { type: 'single', question: "Calcule \\(2x^2 + x\\) pour \\(x = 3\\)", acceptedAnswers: ['21'] }
-    ]
+    id: 10, name: 'Titan des Rectangles',   subtitle: 'Géométrie — expression du périmètre',
+    difficulty: 'moyen', cssColor: '#cc0066', phaserColor: 0xcc0066,
+    question: { type: 'expression',
+      question: "Écris l'expression du <strong>périmètre</strong> d'un rectangle de largeur \\(x\\) et de longueur \\(x + 5\\).",
+      acceptedAnswers: ['4x+10', '10+4x', '2(2x+5)', '2*(2x+5)', '2(x+x+5)', '2(x+5+x)', 'x+x+5+x+x+5', 'x+5+x+x+5+x', 'x+5+x+5+x+x', 'x+x+x+5+x+5'],
+      displayAnswer: '4x + 10', variable: 'x' }
   },
   {
-    id: 6, name: "Oracle de l'Algèbre", subtitle: 'Traduction verbale',
-    difficulty: 'difficile', cssColor: '#00cc66', phaserColor: 0x00cc66,
-    questions: [
-      { type: 'expression', question: "Yannick pense à un nombre \\(n\\). Il le triple puis soustrait 7. Écris le résultat.",
-        acceptedAnswers: ['3n-7', '3*n-7', '-7+3n', '-7+3*n'], displayAnswer: '3n − 7', hint: "Triple = 3n, puis −7.", variable: 'n' },
-      { type: 'expression', question: "Marie pense à un nombre \\(n\\). Elle le double et ajoute 4. Écris le résultat.",
-        acceptedAnswers: ['2n+4', '2*n+4', '4+2n', '4+2*n'], displayAnswer: '2n + 4', hint: "Double = 2n, puis +4.", variable: 'n' }
-    ]
+    id: 11, name: "Maître des Périmètres",   subtitle: 'Géométrie — somme de périmètres (FA76)',
+    difficulty: 'moyen', cssColor: '#aa0044', phaserColor: 0xaa0044,
+    question: { type: 'expression',
+      question: "Dans la même figure, ABCG est un rectangle (largeur \\(x\\), hauteur \\(x+5\\)) et GFEH est un carré (côté \\(x\\)). Écris l'expression de la <strong>somme des périmètres</strong> de ABCG et de GFEH.",
+      acceptedAnswers: [
+        '8x+10', '10+8x',
+        '4x+10+4x', '4x+4x+10', '10+4x+4x',
+        'x+x+5+x+x+5+x+x+x+x',
+        'x+x+x+x+x+x+5+x+x+5',
+        'x+x+x+x+x+x+x+x+5+5'
+      ],
+      displayAnswer: '8x + 10', variable: 'x', image: '/images/rectangleetcarre.png' }
   },
   {
-    id: 7, name: 'Le Grand Maître', subtitle: 'Équivalences',
-    difficulty: 'difficile', cssColor: '#ffcc00', phaserColor: 0xffcc00,
-    questions: [
-      { type: 'qcm', question: "Les expressions \\(2(x+3)\\) et \\(2x+6\\) sont-elles toujours égales ?",
-        choices: ['Oui, toujours', 'Non, jamais', 'Parfois seulement'], answer: 'Oui, toujours',
-        wrongFeedback: { 'Non, jamais': "Teste x=1 : \\(2(1+3)=8\\) et \\(2+6=8\\). Toujours égal !", 'Parfois seulement': "En développant : \\(2(x+3)=2x+6\\). Identique pour tout x !" } },
-      { type: 'qcm', question: "Les expressions \\(3(x-1)\\) et \\(3x-3\\) sont-elles toujours égales ?",
-        choices: ['Oui, toujours', 'Non, jamais', 'Parfois seulement'], answer: 'Oui, toujours',
-        wrongFeedback: { 'Non, jamais': "Teste x=2 : \\(3(2-1)=3\\) et \\(6-3=3\\). Toujours égal !", 'Parfois seulement': "En développant : \\(3(x-1)=3x-3\\). Vrai pour tout x !" } }
-    ]
+    id: 12, name: "Oracle de l'Algèbre",    subtitle: 'Traduction littérale',
+    difficulty: 'difficile', cssColor: '#770022', phaserColor: 0x770022,
+    question: { type: 'qcm',
+      question: "«Je choisis \\(a\\), je le multiplie par 3, puis j'enlève 2 au résultat.» Quelle est l'expression ?",
+      choices: ['3 - 2a', '3a - 2', '2(a - 3)', '3(a - 2)'], answer: '3a - 2',
+      wrongFeedback: { '3 - 2a': "L'ordre compte ! Triple d'abord → 3a, puis −2 → 3a − 2 !", '2(a - 3)': "Tu as multiplié par 2, pas par 3 !", '3(a - 2)': "On soustrait 2 AU RÉSULTAT du triple, pas avant !" } }
+  },
+  {
+    id: 13, name: 'Le Sphinx du Calcul',    subtitle: 'Valeur numérique — expression développée',
+    difficulty: 'difficile', cssColor: '#550011', phaserColor: 0x550011,
+    question: { type: 'single',
+      question: "Calcule \\( 6x + 3 - 4x - 1 + 2x + 8 - 3x + 2 - x - 5 \\) pour \\( x = 20 \\).",
+      acceptedAnswers: ['7'] }
+  },
+  // ── Géométrie — expressions littérales (périmètres et aires complexes) ─────
+  {
+    id: 14, name: 'Gardien du Triangle',    subtitle: 'Périmètre — triangle décrit en mots',
+    difficulty: 'moyen', cssColor: '#00896a', phaserColor: 0x00896a,
+    question: { type: 'expression',
+      question: "Un côté du triangle mesure \\(x\\). Le deuxième mesure 2 de plus que le premier. Le troisième est le double du premier. Écris l'expression du <strong>périmètre</strong> de ce triangle.",
+      acceptedAnswers: [
+        '4x+2', '2+4x',
+        // 6 orderings of the three sides x, (x+2), 2x
+        'x+x+2+2x', 'x+2x+x+2', 'x+2+x+2x', 'x+2+2x+x', '2x+x+x+2', '2x+x+2+x',
+        // mental grouping: x-terms then constant, or constant first
+        'x+x+2x+2', '2+x+x+2x', 'x+2x+2+x',
+        // "double" written as x+x rather than 2x
+        'x+x+2+x+x', 'x+2+x+x+x', 'x+x+x+x+2', 'x+x+x+2+x',
+        // with parentheses (some students write them)
+        'x+(x+2)+2x', 'x+(x+2)+x+x'
+      ],
+      displayAnswer: '4x + 2', variable: 'x' }
+  },
+  {
+    id: 15, name: 'Titan du Périmètre',     subtitle: 'Périmètre — rectangle à côtés littéraux',
+    difficulty: 'moyen', cssColor: '#007355', phaserColor: 0x007355,
+    question: { type: 'expression',
+      question: "Écris l'expression du <strong>périmètre</strong> du rectangle de longueur \\(3x+2\\) et de largeur \\(x\\).",
+      acceptedAnswers: [
+        '8x+4', '4+8x',
+        '3x+2+x+3x+2+x', 'x+3x+2+x+3x+2',
+        '3x+2+3x+2+x+x', 'x+x+3x+2+3x+2',
+        '3x+3x+x+x+2+2', '3x+3x+2+2+x+x'
+      ],
+      displayAnswer: '8x + 4', variable: 'x' }
+  },
+  {
+    id: 16, name: "Seigneur de l'Aire Directe", subtitle: 'Aire — rectangle avec monôme',
+    difficulty: 'moyen', cssColor: '#005e42', phaserColor: 0x005e42,
+    question: { type: 'expression',
+      question: "Écris l'expression de l'<strong>aire</strong> du rectangle de longueur \\(4x\\) et de largeur \\(3\\).",
+      acceptedAnswers: ['12x', '4x*3', '3*4x'],
+      displayAnswer: '12x', variable: 'x' }
+  },
+  {
+    id: 17, name: "Oracle de l'Aire",       subtitle: 'Aire — triangle',
+    difficulty: 'moyen', cssColor: '#004a31', phaserColor: 0x004a31,
+    question: { type: 'expression',
+      question: "Un triangle a une base de \\(4x\\) et une hauteur de \\(5\\). Écris l'expression de son <strong>aire</strong>.",
+      acceptedAnswers: ['10x', '4x*5/2', '5*4x/2'],
+      displayAnswer: '10x', variable: 'x' }
+  },
+  {
+    id: 18, name: 'Gardien du Carré',       subtitle: 'Aire — carré à côté littéral',
+    difficulty: 'difficile', cssColor: '#003623', phaserColor: 0x003623,
+    question: { type: 'expression',
+      question: "Écris l'expression de l'<strong>aire</strong> d'un carré de côté \\(3x\\).",
+      acceptedAnswers: ['9x^2', '9x²', '3x*3x'],
+      displayAnswer: '9x²', variable: 'x' }
+  },
+  {
+    id: 19, name: 'Le Grand Architecte',    subtitle: 'Aire totale — carré + rectangle',
+    difficulty: 'difficile', cssColor: '#002619', phaserColor: 0x002619,
+    question: { type: 'expression',
+      question: "Un carré de côté \\(x\\) et un rectangle de longueur \\(3x\\) et de largeur \\(2\\) sont côte à côte. Écris l'expression de leur <strong>aire totale</strong>.",
+      acceptedAnswers: [
+        'x^2+6x', '6x+x^2', 'x²+6x', '6x+x²',
+        'x*x+6x', '6x+x*x',
+        'x*x+3x*2', '3x*2+x*x', 'x*x+2*3x', '2*3x+x*x'
+      ],
+      displayAnswer: 'x² + 6x', variable: 'x' }
   }
 ];
 
-// Active bosses for current game session (question selected at startGame)
-let BOSSES = BOSS_CONFIGS.map(cfg => ({ ...cfg, question: cfg.questions[0] }));
+// Active bosses — each config has exactly one fixed question
+let BOSSES = BOSS_CONFIGS.map(cfg => ({ ...cfg }));
 
 // ─── Characters ──────────────────────────────────────────────────────────────
 const CHARACTERS = [
@@ -140,11 +235,12 @@ function normalizeNumber(s) {
 function normalizeExpr(s) {
   return s.toLowerCase()
     .replace(/−/g, '-')              // unicode minus − → ASCII -
-    .replace(/[×⋅×·]/g, '*')   // ×, ⋅, ·  → *
-    .replace(/÷|÷/g, '/')           // ÷ → /
-    .replace(/\s+/g, '')                 // remove all spaces ("3 n - 7" → "3n-7")
-    .replace(/\*([a-z])/g, '$1')         // "3*n" → "3n" (implicit multiplication)
-    .replace(/([a-z])\*/g, '$1')         // "n*3" → "n3"
+    .replace(/[×⋅·]/g, '*')         // ×, ⋅, · → *
+    .replace(/÷/g, '/')             // ÷ → /
+    .replace(/\s+/g, '')            // remove all spaces ("3 n - 7" → "3n-7")
+    .replace(/\*\(/g, '(')          // "3*(a+2)" → "3(a+2)" (implicit mult before paren)
+    .replace(/\*([a-z0-9])/g, '$1') // "3*n" → "3n", "3*2" → "32" (implicit mult)
+    .replace(/([a-z])\*/g, '$1')    // "n*3" → "n3"
     .replace(/²/g, '^2')
     .replace(/³/g, '^3');
 }
@@ -497,7 +593,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('collectCoin', () => {
-    if (!players[socket.id]) return;
+    if (!gameActive || !players[socket.id]) return;
     players[socket.id].score += 1;
     if (currentSessionData.players[socket.id]) {
       currentSessionData.players[socket.id].coins++;
@@ -507,6 +603,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('requestQuestion', (bossId) => {
+    if (!gameActive || !players[socket.id]) return;
     bossId = parseInt(bossId, 10);
     if (isNaN(bossId) || bossId < 0 || bossId >= BOSSES.length) bossId = 0;
     const boss = BOSSES[bossId];
@@ -531,6 +628,7 @@ io.on('connection', (socket) => {
       question:  boss.question.question,
       choices:   boss.question.choices || null,
       variable:  boss.question.variable || 'n',
+      image:     boss.question.image || null,
       bossName:  boss.name,
       bossColor: boss.cssColor,
       bossId,
@@ -626,6 +724,8 @@ io.on('connection', (socket) => {
         console.error('OpenAI error:', e.message);
         feedback = problem.hint ? `Indice : ${problem.hint}` : null;
       }
+      // Re-check after async: player may have disconnected or game may have ended
+      if (!players[socket.id] || !gameActive) return;
     }
     // Hint fallback (no AI)
     else if (problem.hint) {

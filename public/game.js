@@ -344,18 +344,37 @@ let savedJoinName   = null;   // saved for auto-reconnect
 let savedJoinCharId = null;
 let hasGameEnded    = false;  // prevents re-join after game over
 
-const LEVEL_WIDTH    = 7200;
+const LEVEL_WIDTH    = 12800;
 const GAME_HEIGHT    = 800;
-const BOSS_POSITIONS = [700, 1500, 2300, 3100, 3900, 4700, 5500, 6400];
+const BOSS_POSITIONS = [700, 1300, 1900, 2500, 3100, 3700, 4300, 4900, 5500, 6100, 6700, 7300, 7900, 8500, 9100, 9700, 10300, 10900, 11500, 12100];
 
-const BOSS_PHASER_COLORS = [0x9933ff, 0x0088ff, 0xff6600, 0xff2200, 0x00aacc, 0xcc0066, 0x00cc66, 0xffcc00];
-const BOSS_CSS_COLORS    = ['#9933ff','#0088ff','#ff6600','#ff2200','#00aacc','#cc0066','#00cc66','#ffcc00'];
-const BOSS_NAMES = [
-  'Gardien des Symboles', 'Seigneur des Substitutions', 'Maître du Négatif',
-  'Archimage des Expressions', 'Titan de la Géométrie', 'Titan des Puissances',
-  "Oracle de l'Algèbre", 'Le Grand Maître'
+const BOSS_PHASER_COLORS = [
+  0x9966ff, 0x6699ff, 0x33aaff, 0x00cccc, 0x00bb77,
+  0x44cc00, 0xffcc00, 0xff7700, 0xff2200, 0xff0055,
+  0xcc0066, 0xaa0044, 0x770022, 0x440000,
+  0x00896a, 0x007355, 0x005e42, 0x004a31, 0x003623, 0x002619
 ];
-const ZONE_COLORS = [0x0a1a0a, 0x0a0a1a, 0x1a0a00, 0x1a0000, 0x001a10, 0x1a1500, 0x0d0a1a, 0x1a0a0d];
+const BOSS_CSS_COLORS = [
+  '#9966ff','#6699ff','#33aaff','#00cccc','#00bb77',
+  '#44cc00','#ffcc00','#ff7700','#ff2200','#ff0055',
+  '#cc0066','#aa0044','#770022','#440000',
+  '#00896a','#007355','#005e42','#004a31','#003623','#002619'
+];
+const BOSS_NAMES = [
+  'Gardien des Symboles',     'Maître des Notations',      'Oracle des Conventions',
+  'Seigneur des Valeurs',     'Baron des Calculs',          'Titan des Relatifs',
+  'Démon des Parenthèses',    'Titan des Puissances',      'Dieu des Figures',
+  "Seigneur de l'Espace",     'Titan des Rectangles',      'Maître des Périmètres',
+  "Oracle de l'Algèbre",      'Le Sphinx du Calcul',
+  'Gardien du Triangle',      'Titan du Périmètre',        "Seigneur de l'Aire Directe",
+  "Oracle de l'Aire",         'Gardien du Carré',          'Le Grand Architecte'
+];
+const ZONE_COLORS = [
+  0x060619, 0x06101a, 0x06151a, 0x001111, 0x001109,
+  0x051400, 0x181200, 0x180600, 0x180000, 0x180008,
+  0x12000a, 0x0e0005, 0x0a0000, 0x070000,
+  0x000d07, 0x000b06, 0x000905, 0x000703, 0x000402, 0x000201
+];
 
 // ─── Preload ─────────────────────────────────────────────────────────────────
 function preload() {
@@ -406,9 +425,9 @@ function buildLevel(scene) {
   movingPlatforms = scene.physics.add.group({ allowGravity: false, immovable: true });
   bumpers         = scene.physics.add.staticGroup();
 
-  for (let z = 0; z < 8; z++) {
-    const x  = z * (LEVEL_WIDTH / 8);
-    const bg = scene.add.rectangle(x + LEVEL_WIDTH / 16, GAME_HEIGHT / 2, LEVEL_WIDTH / 8, GAME_HEIGHT, ZONE_COLORS[z], 0.6);
+  for (let z = 0; z < BOSS_POSITIONS.length; z++) {
+    const x  = z * (LEVEL_WIDTH / BOSS_POSITIONS.length);
+    const bg = scene.add.rectangle(x + LEVEL_WIDTH / (BOSS_POSITIONS.length * 2), GAME_HEIGHT / 2, LEVEL_WIDTH / BOSS_POSITIONS.length, GAME_HEIGHT, ZONE_COLORS[z], 0.6);
     bg.setDepth(-10);
   }
 
@@ -593,7 +612,8 @@ function submitAnswer() {
   } else if (currentQuestion.type === 'qcm') {
     if (!selectedQcm) return; userAnswer = selectedQcm;
   } else if (currentQuestion.type === 'expression') {
-    userAnswer = exprValue.trim(); if (!userAnswer) return;
+    userAnswer = document.getElementById('answer-input').value.trim();
+    if (!userAnswer) return;
   }
   document.getElementById('loading-feedback').style.display = 'block';
   document.getElementById('submit-btn').disabled = true;
@@ -714,7 +734,7 @@ function setupSockets(scene) {
     else         document.getElementById('timer-ui').classList.remove('danger');
   });
 
-  socket.on('mathQuestion', ({ type, question, choices, variable, bossName, bossId, attemptsLeft }) => {
+  socket.on('mathQuestion', ({ type, question, choices, variable, image, bossName, bossId, attemptsLeft }) => {
     currentQuestion = { type, variable: variable || 'n', bossId };
     exprValue = ''; selectedQcm = null;
 
@@ -726,6 +746,10 @@ function setupSockets(scene) {
     const qEl = document.getElementById('question-text');
     qEl.innerHTML = question;
     if (window.MathJax?.typesetPromise) window.MathJax.typesetPromise([qEl]);
+
+    const imgEl = document.getElementById('question-image');
+    if (image) { imgEl.src = image; imgEl.style.display = 'block'; }
+    else        { imgEl.src = '';   imgEl.style.display = 'none'; }
 
     document.getElementById('single-area').style.display = 'none';
     document.getElementById('qcm-area').style.display    = 'none';
@@ -752,8 +776,9 @@ function setupSockets(scene) {
         };
       });
     } else if (type === 'expression') {
-      document.getElementById('expr-area').style.display = 'block';
-      renderExprDisplay();
+      document.getElementById('single-area').style.display = 'block';
+      const inp = document.getElementById('answer-input');
+      inp.value = ''; inp.placeholder = 'Écris ton expression…'; setTimeout(() => inp.focus(), 100);
     }
 
     document.getElementById('submit-btn').disabled = false;
@@ -795,7 +820,7 @@ function setupSockets(scene) {
     if (!spamBlocked) {
       triggerWrongEffect(scene, myPlayer?.x || 400, myPlayer?.y || 300);
     }
-    if (!spamBlocked && currentQuestion.type === 'single') setTimeout(() => document.getElementById('answer-input').focus(), 100);
+    if (!spamBlocked && (currentQuestion.type === 'single' || currentQuestion.type === 'expression')) setTimeout(() => document.getElementById('answer-input').focus(), 100);
   });
 
   socket.on('bossSkipGranted', ({ coinsLost } = {}) => {
