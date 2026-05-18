@@ -83,9 +83,9 @@ const BOSS_CONFIGS = [
     difficulty: 'difficile', cssColor: '#00cc66', phaserColor: 0x00cc66,
     questions: [
       { type: 'expression', question: "Yannick pense à un nombre \\(n\\). Il le triple puis soustrait 7. Écris le résultat.",
-        acceptedAnswers: ['3n-7', '3*n-7'], displayAnswer: '3n − 7', hint: "Triple = 3n, puis −7.", variable: 'n' },
+        acceptedAnswers: ['3n-7', '3*n-7', '-7+3n', '-7+3*n'], displayAnswer: '3n − 7', hint: "Triple = 3n, puis −7.", variable: 'n' },
       { type: 'expression', question: "Marie pense à un nombre \\(n\\). Elle le double et ajoute 4. Écris le résultat.",
-        acceptedAnswers: ['2n+4', '2*n+4'], displayAnswer: '2n + 4', hint: "Double = 2n, puis +4.", variable: 'n' }
+        acceptedAnswers: ['2n+4', '2*n+4', '4+2n', '4+2*n'], displayAnswer: '2n + 4', hint: "Double = 2n, puis +4.", variable: 'n' }
     ]
   },
   {
@@ -128,14 +128,22 @@ function getCharactersState() {
 
 // ─── Answer checking ──────────────────────────────────────────────────────────
 function normalizeNumber(s) {
-  return s.trim().replace(',', '.').replace(/\s+/g, '');
+  return s.trim()
+    .replace(/−/g, '-')   // unicode minus sign − (U+2212, used by MathJax)
+    .replace(/,/g, '.')        // all commas → decimal point (regex, not just first)
+    .replace(/\s+/g, '');      // remove all whitespace (handles "- 7" → "-7")
 }
 
 function normalizeExpr(s) {
   return s.toLowerCase()
-    .replace(/\s+/g, '')
-    .replace(/×/g, '*').replace(/÷/g, '/')
-    .replace(/·/g, '*').replace(/²/g, '^2').replace(/³/g, '^3');
+    .replace(/−/g, '-')              // unicode minus − → ASCII -
+    .replace(/[×⋅×·]/g, '*')   // ×, ⋅, ·  → *
+    .replace(/÷|÷/g, '/')           // ÷ → /
+    .replace(/\s+/g, '')                 // remove all spaces ("3 n - 7" → "3n-7")
+    .replace(/\*([a-z])/g, '$1')         // "3*n" → "3n" (implicit multiplication)
+    .replace(/([a-z])\*/g, '$1')         // "n*3" → "n3"
+    .replace(/²/g, '^2')
+    .replace(/³/g, '^3');
 }
 
 function checkAnswer(problem, userAnswer) {
