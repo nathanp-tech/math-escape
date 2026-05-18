@@ -151,8 +151,11 @@ function normalizeExpr(s) {
 
 function checkAnswer(problem, userAnswer) {
   switch (problem.type) {
-    case 'qcm':
-      return userAnswer === problem.answer;
+    case 'qcm': {
+      const match = userAnswer.trim() === problem.answer.trim();
+      if (!match) console.log(`[QCM mismatch] reçu: ${JSON.stringify(userAnswer)} attendu: ${JSON.stringify(problem.answer)}`);
+      return match;
+    }
     case 'single': {
       const uNum = parseFloat(normalizeNumber(userAnswer));
       if (isNaN(uNum)) return false;
@@ -249,11 +252,6 @@ function endAndSave() {
 
 function startGame() {
   if (gameActive) return;
-  // Pick a random variant for each boss — same seed for all players, decided server-side
-  BOSSES = BOSS_CONFIGS.map(cfg => {
-    const q = cfg.questions[Math.floor(Math.random() * cfg.questions.length)];
-    return { ...cfg, question: q };
-  });
   gameActive = true;
   timer = gameDuration;
   currentSessionData.startTime = new Date().toISOString();
