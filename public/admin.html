@@ -242,11 +242,57 @@
 </div>
 
 <script>
-  const socket = io();
+  const socket = io({
+    transports: ['websocket', 'polling'],
+    reconnection: true,
+    reconnectionDelay: 1500,
+    reconnectionAttempts: 20,
+  });
   let selectedDuration = 600;
-  let isGameActive = false;
-  let lastJsonData = null;
+  let isGameActive     = false;
+  let lastJsonData     = null;
+  let savedAdminPwd    = null;   // saved for auto-reconnect
+  let isAuthenticated  = false;
   const allReports = [];
+
+  // ── Reconnection banner ────────────────────────────────────────────────────
+  function showAdminBanner(visible) {
+    let el = document.getElementById('admin-reconnect-banner');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'admin-reconnect-banner';
+      el.textContent = '🔄 Reconnexion en cours…';
+      Object.assign(el.style, {
+        position:'fixed', top:'0', left:'0', right:'0', zIndex:'9999',
+        background:'#ff6600', color:'#fff', textAlign:'center',
+        padding:'10px', fontWeight:'700', fontSize:'.95rem', fontFamily:'sans-serif'
+      });
+      document.body.prepend(el);
+    }
+    el.style.display = visible ? 'block' : 'none';
+  }
+
+  socket.on('disconnect', (reason) => {
+    if (reason !== 'io server disconnect') showAdminBanner(true);
+  });
+
+  socket.on('connect', () => {
+    showAdminBanner(false);
+    // Re-authenticate automatically after reconnect
+    if (savedAdminPwd && isAuthenticated) {
+      socket.emit('adminAuth', savedAdminPwd);
+    }
+  });
+
+  socket.io.on('reconnect_failed', () => {
+    showAdminBanner(false);
+    const el = document.getElementById('admin-reconnect-banner') || document.createElement('div');
+    el.id = 'admin-reconnect-banner';
+    el.innerHTML = '⚠️ Connexion perdue — <button onclick="location.reload()" style="background:#fff;color:#000;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-weight:700">Recharger</button>';
+    Object.assign(el.style, { position:'fixed', top:'0', left:'0', right:'0', zIndex:'9999', background:'#cc0000', color:'#fff', textAlign:'center', padding:'10px', fontFamily:'sans-serif' });
+    el.style.display = 'block';
+    document.body.prepend(el);
+  });
 
   // ── Login ──────────────────────────────────────────────────────────────────
   document.getElementById('login-btn').onclick = tryLogin;
@@ -258,6 +304,8 @@
 
   socket.on('adminAuthResult', ({ success }) => {
     if (success) {
+      savedAdminPwd   = document.getElementById('pwd-input').value;
+      isAuthenticated = true;
       document.getElementById('login-screen').style.display = 'none';
       document.getElementById('dashboard').style.display   = 'block';
     } else {

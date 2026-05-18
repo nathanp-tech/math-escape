@@ -438,8 +438,19 @@ io.on('connection', (socket) => {
   socket.on('joinGame', ({ username, characterId }) => {
     const char = CHARACTERS.find(c => c.id === characterId);
     if (!char) return socket.emit('joinError', 'Personnage invalide.');
-    if (Object.values(players).some(p => p.characterId === characterId))
-      return socket.emit('joinError', 'Ce personnage est déjà pris !');
+
+    // Allow reconnecting player to reclaim their character (same name + same char)
+    const claimedBy = Object.entries(players).find(([, p]) => p.characterId === characterId);
+    if (claimedBy) {
+      const [oldId, oldPlayer] = claimedBy;
+      if (oldPlayer.name === username.substring(0, 15)) {
+        // Same player reconnecting — evict old entry silently
+        delete players[oldId];
+        io.emit('disconnectPlayer', oldId);
+      } else {
+        return socket.emit('joinError', 'Ce personnage est déjà pris !');
+      }
+    }
 
     players[socket.id] = {
       x: 50, y: 300, playerId: socket.id,
@@ -449,7 +460,7 @@ io.on('connection', (socket) => {
       score: 0, escaped: false, isHost: Object.keys(players).length === 0,
       currentProblem: null, currentBossId: null,
       wrongPerBoss: {}, lastWrongTime: 0,
-      bossFirstSeen: {}  // tracks when each boss was first encountered (for timing)
+      bossFirstSeen: {}
     };
     initPlayerSession(socket.id, username, char.emoji, char.name);
     socket.emit('currentPlayers', players);
@@ -457,6 +468,12 @@ io.on('connection', (socket) => {
     io.emit('leaderboardUpdate', players);
     io.emit('charactersState', getCharactersState());
     io.to('admins').emit('adminState', buildAdminState());
+
+    // Sync game state to a player who reconnects mid-game
+    if (gameActive) {
+      socket.emit('gameStarted');
+      socket.emit('timeUpdate', timer);
+    }
   });
 
   socket.on('disconnect', () => {

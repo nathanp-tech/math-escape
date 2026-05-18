@@ -340,8 +340,9 @@ let exprValue = '';
 let selectedQcm = null;
 let selectedCharacterId = null;
 let cooldownInterval = null;
-let savedJoinName = null;        // saved for reconnection
+let savedJoinName   = null;   // saved for auto-reconnect
 let savedJoinCharId = null;
+let hasGameEnded    = false;  // prevents re-join after game over
 
 const LEVEL_WIDTH    = 7200;
 const GAME_HEIGHT    = 800;
@@ -622,16 +623,28 @@ function showReconnectingOverlay(visible) {
 // ─── Socket events ───────────────────────────────────────────────────────────
 function setupSockets(scene) {
   socket.on('disconnect', (reason) => {
-    // Intentional server-side kick (game reset etc.) → hard reload
     if (reason === 'io server disconnect') { window.location.reload(); return; }
-    // Network dropout → show overlay, Socket.io will auto-reconnect
     showReconnectingOverlay(true);
+  });
+
+  socket.io.on('reconnect_failed', () => {
+    // All attempts exhausted — ask user to reload manually
+    showReconnectingOverlay(false);
+    const el = document.getElementById('reconnect-overlay') || document.createElement('div');
+    el.id = 'reconnect-overlay';
+    el.innerHTML = '<div style="text-align:center"><div style="font-size:2rem;margin-bottom:12px">⚠️</div><div style="font-weight:700;font-size:1.1rem;margin-bottom:12px">Connexion perdue</div><button onclick="location.reload()" style="padding:10px 24px;background:#00e5ff;color:#000;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer">Recharger la page</button></div>';
+    Object.assign(el.style, { position:'fixed', inset:'0', zIndex:'9999', background:'rgba(6,9,15,0.95)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily:'sans-serif' });
+    document.body.appendChild(el);
   });
 
   socket.on('connect', () => {
     showReconnectingOverlay(false);
-    // Re-join automatically if the player had already joined
+    if (hasGameEnded) return;   // game is over — don't rejoin
     if (savedJoinName !== null && savedJoinCharId !== null) {
+      // Close any open question modal before rejoining
+      closeModal();
+      inQuestion = false;
+      activeBoss = null;
       socket.emit('joinGame', { username: savedJoinName, characterId: savedJoinCharId });
     }
   });
@@ -806,6 +819,7 @@ function setupSockets(scene) {
   }
 
   socket.on('gameOver', ({ formsUrl, players: ranked }) => {
+    hasGameEnded = true;   // prevent auto-rejoin on reconnect after game ends
     const medals = ['🥇','🥈','🥉'];
     document.getElementById('podium').innerHTML = ranked.map((p, i) => `
       <div class="podium-row ${['rank-1','rank-2','rank-3'][i] || 'rank-other'}">
