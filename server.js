@@ -2,7 +2,10 @@ require('dotenv').config();
 const express = require('express');
 const app = express();
 const http = require('http').createServer(app);
-const io = require('socket.io')(http);
+const io = require('socket.io')(http, {
+  pingInterval: 10000,   // ping every 10s (default 25s) — keeps Railway proxy alive
+  pingTimeout:  5000,    // disconnect if no pong in 5s
+});
 const { OpenAI } = require('openai');
 const os = require('os');
 const fs = require('fs');

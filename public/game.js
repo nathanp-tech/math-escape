@@ -340,6 +340,8 @@ let exprValue = '';
 let selectedQcm = null;
 let selectedCharacterId = null;
 let cooldownInterval = null;
+let savedJoinName = null;        // saved for reconnection
+let savedJoinCharId = null;
 
 const LEVEL_WIDTH    = 7200;
 const GAME_HEIGHT    = 800;
@@ -372,7 +374,13 @@ function preload() {
 // ─── Create ──────────────────────────────────────────────────────────────────
 function create() {
   const scene = this;
-  socket = io();
+  socket = io({
+    transports: ['websocket', 'polling'],   // prefer WebSocket to avoid 60s proxy timeout
+    upgrade: true,
+    reconnection: true,
+    reconnectionDelay: 1500,
+    reconnectionAttempts: 20,
+  });
 
   cursors  = this.input.keyboard.createCursorKeys();
   enterKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
@@ -531,7 +539,9 @@ function setupUI(scene) {
 
   document.getElementById('join-btn').onclick = () => {
     const name = document.getElementById('username-input').value.trim() || 'Joueur';
-    document.getElementById('login-ui').style.display      = 'none';
+    savedJoinName   = name;
+    savedJoinCharId = selectedCharacterId;
+    document.getElementById('login-ui').style.display        = 'none';
     document.getElementById('waiting-overlay').style.display = 'flex';
     socket.emit('joinGame', { username: name, characterId: selectedCharacterId });
   };
@@ -591,9 +601,40 @@ function submitAnswer() {
   socket.emit('submitAnswer', { userAnswer });
 }
 
+// ─── Reconnection overlay ─────────────────────────────────────────────────────
+function showReconnectingOverlay(visible) {
+  let el = document.getElementById('reconnect-overlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'reconnect-overlay';
+    el.innerHTML = '<div style="text-align:center"><div style="font-size:2rem;margin-bottom:12px">🔄</div><div style="font-weight:700;font-size:1.1rem;margin-bottom:6px">Reconnexion en cours…</div><div style="font-size:.85rem;opacity:.7">Ne recharge pas la page</div></div>';
+    Object.assign(el.style, {
+      position: 'fixed', inset: '0', zIndex: '9999',
+      background: 'rgba(6,9,15,0.92)', display: 'flex',
+      alignItems: 'center', justifyContent: 'center',
+      color: '#fff', fontFamily: 'sans-serif',
+    });
+    document.body.appendChild(el);
+  }
+  el.style.display = visible ? 'flex' : 'none';
+}
+
 // ─── Socket events ───────────────────────────────────────────────────────────
 function setupSockets(scene) {
-  socket.on('disconnect', () => window.location.reload());
+  socket.on('disconnect', (reason) => {
+    // Intentional server-side kick (game reset etc.) → hard reload
+    if (reason === 'io server disconnect') { window.location.reload(); return; }
+    // Network dropout → show overlay, Socket.io will auto-reconnect
+    showReconnectingOverlay(true);
+  });
+
+  socket.on('connect', () => {
+    showReconnectingOverlay(false);
+    // Re-join automatically if the player had already joined
+    if (savedJoinName !== null && savedJoinCharId !== null) {
+      socket.emit('joinGame', { username: savedJoinName, characterId: savedJoinCharId });
+    }
+  });
 
   socket.on('charactersState', (chars) => {
     chars.forEach(c => {
