@@ -473,6 +473,58 @@ function buildLevel(scene) {
     }
   }
 
+  // ── Late-game zone (bosses 14-19, x > 8800) — dense obstacles + moving platforms ──
+  for (let i = 0; i < 80; i++) {
+    const px = 8800 + i * 155;
+    if (px >= LEVEL_WIDTH - 350) break;
+    if (BOSS_POSITIONS.some(bx => Math.abs(px - bx) < 240)) continue;
+
+    const py = GAME_HEIGHT - 175 - Phaser.Math.RND.frac() * 210;
+    const pw = 75 + Phaser.Math.RND.frac() * 145;
+
+    if (Phaser.Math.RND.frac() > 0.40) {
+      // Moving platform — majority in late game
+      const mp = scene.add.rectangle(px, py, pw, 18, [0x26c6da, 0x4dd0e1, 0x80deea][Math.floor(Phaser.Math.RND.frac() * 3)]);
+      scene.physics.add.existing(mp); mp.body.allowGravity = false; mp.body.immovable = true;
+      movingPlatforms.add(mp);
+      if (Phaser.Math.RND.frac() > 0.45) {
+        // Horizontal movement (faster than early game)
+        const dist = 130 + Phaser.Math.RND.frac() * 100;
+        const dur  = 950 + Phaser.Math.RND.frac() * 550;
+        scene.tweens.add({ targets: mp, x: px + dist, duration: dur, yoyo: true, repeat: -1, ease: 'Sine.easeInOut', onUpdate: () => mp.body.updateFromGameObject() });
+      } else {
+        // Vertical movement — new in late game
+        const rise = 70 + Phaser.Math.RND.frac() * 80;
+        const dur  = 1000 + Phaser.Math.RND.frac() * 600;
+        scene.tweens.add({ targets: mp, y: py - rise, duration: dur, yoyo: true, repeat: -1, ease: 'Sine.easeInOut', onUpdate: () => mp.body.updateFromGameObject() });
+      }
+    } else {
+      const col = [0x004d40, 0x00695c, 0x37474f, 0x1a237e, 0x006064][Math.floor(Phaser.Math.RND.frac() * 5)];
+      const plat = scene.add.rectangle(px, py, pw, 18, col);
+      scene.physics.add.existing(plat, true); platforms.add(plat);
+    }
+
+    // Coin cluster on platform (1 to 3 coins)
+    const nCoins = Phaser.Math.RND.frac() > 0.45 ? 3 : 1;
+    for (let c = 0; c < nCoins; c++) {
+      const coin = coinsGroup.create(px + c * 34, py - 38, 'coin');
+      coin.setTint(0x69ff47).setScale(0.68);
+      scene.tweens.add({ targets: coin, y: py - 50, duration: 750 + c * 120, yoyo: true, repeat: -1 });
+    }
+
+    // Enemies — faster, more aggressive (red)
+    const roll = Phaser.Math.RND.frac();
+    if (roll > 0.82) {
+      const bmp = scene.add.rectangle(px, py - 14, 36, 10, 0x00e676);
+      scene.physics.add.existing(bmp, true); bumpers.add(bmp);
+    } else if (roll > 0.28) {
+      const enem = scene.add.rectangle(px, py - 28, 36, 36, roll > 0.55 ? 0xb71c1c : 0xe65100);
+      enem.setStrokeStyle(2, roll > 0.55 ? 0xff8a80 : 0xffcc80);
+      scene.physics.add.existing(enem); enem.body.setAllowGravity(false); enemies.add(enem);
+      scene.tweens.add({ targets: enem, x: px + pw / 2 - 18, duration: 420 + Phaser.Math.RND.frac() * 480, yoyo: true, repeat: -1 });
+    }
+  }
+
   for (let cx = 300; cx < LEVEL_WIDTH - 200; cx += 180) {
     if (!BOSS_POSITIONS.some(bx => Math.abs(cx - bx) < 200)) {
       const cy = GAME_HEIGHT - 100 - Phaser.Math.RND.frac() * 40;
